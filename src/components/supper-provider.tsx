@@ -38,7 +38,12 @@ import {
   type PendingOptimistic,
 } from "@/lib/optimistic";
 import { getPublicSupabaseConfig, isSupabaseConfigured } from "@/lib/config";
-import { mealRecipeKey, savedMealForKey, savedMealRequestActive } from "@/lib/saved-meals";
+import {
+  lastCookedAtForSave,
+  mealRecipeKey,
+  savedMealForKey,
+  savedMealRequestActive,
+} from "@/lib/saved-meals";
 import { planningTargetStarts, scopeForMeal, scopeForRole } from "@/lib/open-weeks";
 import type { ViewedWeekSelection } from "@/lib/week-navigator";
 import { PASSWORD_MIN_LENGTH, passwordResetRedirectUrl } from "@/lib/login";
@@ -856,8 +861,11 @@ function SupabaseSupperProvider({ children }: { children: React.ReactNode }) {
           });
         }
         const savedAt = new Date().toISOString();
-        const lastLockedAt =
-          located.scope.week.status === "locked" ? located.scope.week.lockedAt ?? savedAt : null;
+        const lastLockedAt = lastCookedAtForSave({
+          weekStatus: located.scope.week.status,
+          nightDate: meal.nightDate,
+          timeZone: visible.household.timezone,
+        });
         return runOptimistic(
           `saved:${recipeKey}`,
           (snap) =>

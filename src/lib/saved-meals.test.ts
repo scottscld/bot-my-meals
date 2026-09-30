@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { formatNightDate } from "@/lib/dates";
+import { todayInTimeZone } from "@/lib/meal-history";
 import { emptyHousehold } from "@/lib/seed";
 import {
   patchSavedMealAdded,
@@ -25,6 +27,8 @@ import {
   SAVED_MEALS_LABEL,
   SAVED_MEALS_ROW_SUB,
   UNSAVE_TOAST,
+  cookNightInstant,
+  lastCookedAtForSave,
   mealRecipeKey,
   mealSaveAvailability,
   nextWeekStartsOn,
@@ -151,6 +155,60 @@ describe("saved meal list", () => {
         "America/Los_Angeles",
       ),
     ).toBe("Saved Sep 20");
+  });
+
+  it("shows the dinner night, not the day the week was locked", () => {
+    const zone = "America/Los_Angeles";
+    const night = "2026-09-29";
+    const cooked = lastCookedAtForSave({
+      weekStatus: "locked",
+      nightDate: night,
+      timeZone: zone,
+    });
+    const sundayLock = "2026-09-27T22:00:00.000Z";
+
+    expect(lastCookedAtForSave({ weekStatus: "voting", nightDate: night, timeZone: zone })).toBeNull();
+    expect(cooked).toBe(cookNightInstant(night, zone));
+    expect(cooked).not.toBeNull();
+    expect(todayInTimeZone(new Date(cooked ?? ""), zone)).toBe(night);
+    expect(
+      savedMealWhenLine(
+        meal({ recipeKey: "sausage", title: "Sheet-pan sausage & peppers", lastLockedAt: cooked, savedAt: sundayLock }),
+        zone,
+      ),
+    ).toBe(`Last cooked ${formatNightDate(night)}`);
+    expect(
+      savedMealWhenLine(
+        meal({ recipeKey: "sausage", title: "Sheet-pan sausage & peppers", lastLockedAt: sundayLock }),
+        zone,
+      ),
+    ).toBe("Last cooked Sep 27");
+
+    // UTC midnight of the night is the previous evening in Pacific. Do not store that.
+    expect(todayInTimeZone(new Date("2026-09-29T00:00:00.000Z"), zone)).toBe("2026-09-28");
+    expect(savedMealWhenLine(meal({ recipeKey: "sausage", title: "Sausage", lastLockedAt: night }), zone)).toBe(
+      "Last cooked Sep 29",
+    );
+
+    for (const boundary of ["America/New_York", "Pacific/Honolulu", "Pacific/Auckland"]) {
+      const instant = cookNightInstant(night, boundary);
+      expect(instant).not.toBeNull();
+      expect(todayInTimeZone(new Date(instant ?? ""), boundary)).toBe(night);
+      expect(
+        savedMealWhenLine(meal({ recipeKey: "sausage", title: "Sausage", lastLockedAt: instant }), boundary),
+      ).toBe("Last cooked Sep 29");
+    }
+
+    for (const dstNight of ["2026-03-08", "2026-11-01"]) {
+      const instant = cookNightInstant(dstNight, zone);
+      expect(todayInTimeZone(new Date(instant ?? ""), zone)).toBe(dstNight);
+      expect(
+        savedMealWhenLine(meal({ recipeKey: "sausage", title: "Sausage", lastLockedAt: instant }), zone),
+      ).toBe(`Last cooked ${formatNightDate(dstNight)}`);
+    }
+
+    expect(cookNightInstant("2026-02-31", zone)).toBeNull();
+    expect(lastCookedAtForSave({ weekStatus: "locked", nightDate: "nope", timeZone: zone })).toBeNull();
   });
 
   it("keeps one household row and clears a request on remove", () => {
@@ -339,6 +397,10 @@ describe("saved meals surfaces", () => {
     );
     const repo = readFileSync(path.join(srcRoot, "lib/supabase/repo.ts"), "utf8");
     const provider = readFileSync(path.join(srcRoot, "components/supper-provider.tsx"), "utf8");
+    const cookNight = readFileSync(
+      path.resolve(import.meta.dirname, "../../supabase/migrations/20260930040000_saved_meal_cook_night.sql"),
+      "utf8",
+    );
     const readme = readFileSync(path.resolve(import.meta.dirname, "../../README.md"), "utf8");
     const docs = readFileSync(path.resolve(import.meta.dirname, "../../docs/saved-meals.md"), "utf8");
 
@@ -365,7 +427,13 @@ describe("saved meals surfaces", () => {
     expect(repo).toContain("supabaseRequestSavedMeal");
     expect(provider).toContain('table: "saved_meals"');
     expect(provider).toContain("toggleSavedMeal");
+    expect(provider).toContain("lastCookedAtForSave");
+    expect(provider).not.toContain("week.lockedAt");
+    expect(cookNight).toContain("private.cook_night_instant");
+    expect(cookNight).toContain("m.night_date");
+    expect(cookNight).not.toContain("coalesce(new.locked_at, now())");
     expect(readme).toContain("20260928183000_saved_meals.sql");
+    expect(readme).toContain("20260930040000_saved_meal_cook_night.sql");
     expect(readme).toContain("saved_meals");
     expect(docs).toContain("saved_recipe_keys");
     expect(docs).toContain("21 days");

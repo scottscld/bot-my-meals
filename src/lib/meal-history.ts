@@ -52,6 +52,59 @@ function resolveTimeZone(timeZone: string): string {
   }
 }
 
+function civilPart(
+  parts: Intl.DateTimeFormatPart[],
+  type: Intl.DateTimeFormatPartTypes,
+): number {
+  const raw = Number(parts.find((part) => part.type === type)?.value);
+  if (type === "hour" && raw === 24) return 0;
+  return raw;
+}
+
+/**
+ * UTC instant for a clock time on a calendar date in `timeZone`.
+ * Noon is the safe choice for a date-only night: UTC midnight of that
+ * date is the previous evening in US timezones.
+ */
+export function instantOnCivilDate(
+  isoDate: string,
+  timeZone: string,
+  hour: number,
+  minute = 0,
+): Date {
+  const zone = resolveTimeZone(timeZone);
+  const [year, month, day] = isoDate.slice(0, 10).split("-").map(Number);
+  if (!year || !month || !day) return new Date(NaN);
+  const desired = Date.UTC(year, month - 1, day, hour, minute, 0);
+  let utc = desired;
+  for (let pass = 0; pass < 2; pass += 1) {
+    const guess = new Date(utc);
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: zone,
+      hourCycle: "h23",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    }).formatToParts(guess);
+    const asUtc = Date.UTC(
+      civilPart(parts, "year"),
+      civilPart(parts, "month") - 1,
+      civilPart(parts, "day"),
+      civilPart(parts, "hour"),
+      civilPart(parts, "minute"),
+      civilPart(parts, "second"),
+    );
+    if (Number.isNaN(asUtc)) return new Date(utc);
+    const next = desired - (asUtc - guess.getTime());
+    if (next === utc) break;
+    utc = next;
+  }
+  return new Date(utc);
+}
+
 export function isWeekEnded(startsOn: string, timeZone: string, now: Date): boolean {
   return todayInTimeZone(now, timeZone) > saturdayOfWeek(startsOn);
 }

@@ -1,8 +1,8 @@
 import { addDays, formatNightDate } from "./dates";
 import { nightLifecycle } from "./lock";
-import { todayInTimeZone } from "./meal-history";
+import { instantOnCivilDate, todayInTimeZone } from "./meal-history";
 import { dinnerRecipeReady } from "./post-lock-waiting";
-import type { Meal, Membership, Recipe, SavedMeal, Vote } from "./types";
+import type { Meal, Membership, Recipe, SavedMeal, Vote, WeekStatus } from "./types";
 
 export type { SavedMeal };
 
@@ -133,6 +133,41 @@ export function savedMealCooldownLabel(lastLockedAt: string | null, now: Date): 
   return `Available in ~${weeks} wk`;
 }
 
+const DATE_ONLY = /^(\d{4}-\d{2}-\d{2})$/;
+
+/**
+ * Last cooked is the dinner's night on a locked week, not the moment the week locked.
+ * Stored at noon in the house timezone so a date-only night does not slip a day.
+ * An unlocked save returns null and does not start cool-down.
+ */
+export function lastCookedAtForSave(input: {
+  weekStatus: WeekStatus;
+  nightDate: string;
+  timeZone: string;
+}): string | null {
+  switch (input.weekStatus) {
+    case "voting":
+      return null;
+    case "locked":
+      return cookNightInstant(input.nightDate, input.timeZone);
+    default: {
+      const _exhaustive: never = input.weekStatus;
+      return _exhaustive;
+    }
+  }
+}
+
+/** Noon on `nightDate` in `timeZone`. Null when the calendar date is not real. */
+export function cookNightInstant(nightDate: string, timeZone: string): string | null {
+  const match = DATE_ONLY.exec(nightDate.trim().slice(0, 10));
+  if (!match) return null;
+  const iso = match[1];
+  const instant = instantOnCivilDate(iso, timeZone, 12, 0);
+  if (Number.isNaN(instant.getTime())) return null;
+  if (todayInTimeZone(instant, timeZone) !== iso) return null;
+  return instant.toISOString();
+}
+
 export function savedMealWhenLine(meal: Pick<SavedMeal, "lastLockedAt" | "savedAt">, timeZone: string): string {
   if (meal.lastLockedAt) {
     return `Last cooked ${formatSavedInstant(meal.lastLockedAt, timeZone)}`;
@@ -141,8 +176,11 @@ export function savedMealWhenLine(meal: Pick<SavedMeal, "lastLockedAt" | "savedA
 }
 
 function formatSavedInstant(iso: string, timeZone: string): string {
-  const parsed = new Date(iso);
-  const date = Number.isNaN(parsed.getTime()) ? iso.slice(0, 10) : todayInTimeZone(parsed, timeZone);
+  const trimmed = iso.trim();
+  const dateOnly = DATE_ONLY.exec(trimmed);
+  if (dateOnly) return formatNightDate(dateOnly[1]);
+  const parsed = new Date(trimmed);
+  const date = Number.isNaN(parsed.getTime()) ? trimmed.slice(0, 10) : todayInTimeZone(parsed, timeZone);
   return formatNightDate(date);
 }
 

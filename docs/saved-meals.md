@@ -14,13 +14,13 @@ The app does not invent a second waiting screen. **Request for next week** alway
 | `recipe_key` | Stable identity. `recipes.recipe_key` when Meal Ops stamped one, otherwise the normalized title (trim, lower case, collapsed spaces). Unique per household. |
 | `title` | Latest title the house should see. |
 | `saved_at` | When someone saved it. Sort the manage list by this, newest first. |
-| `last_locked_at` | Last locked cook. Null until then, so an unlocked save can be suggested sooner. |
+| `last_locked_at` | The dinner's night on a locked week, stored as noon in the house timezone. Null until then, so an unlocked save can be suggested sooner. Not the moment the week was locked. |
 | `requested_for_week` | `weeks.starts_on` the house asked for. Null if not requested. |
 | `source_recipe_id` | Recipe row at save time. Set null if that recipe is deleted. Not a forever copy of the steps. |
 
 Row Level Security: household members `select`. Owner and voter `insert` / `update` / `delete`. Service role bypasses RLS.
 
-A week transitioning to `locked` stamps `last_locked_at` for saved keys that match a real dinner that night (not leftovers, not remove / skip / request-new). Matching dinners on `requested_for_week` clear the request.
+A week transitioning to `locked` stamps `last_locked_at` from that dinner's `night_date` (noon in the house timezone) for saved keys that match a real dinner that night (not leftovers, not remove / skip / request-new). Saving a dinner on an already locked week stores that same night. Matching dinners on `requested_for_week` clear the request.
 
 ## How Meal Ops reads the pool
 
