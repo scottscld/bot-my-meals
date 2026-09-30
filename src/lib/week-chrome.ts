@@ -1,3 +1,4 @@
+import { weekdayLabelFromNight } from "./dates";
 import { isNightOff, nightLifecycle } from "./lock";
 import { recipeNightsForWeek } from "./recipes";
 import type { Meal, Membership, ShoppingPrompt, Vote, WeekStatus } from "./types";
@@ -128,4 +129,13 @@ export function showFirstMealRow(input: {
   if (input.pendingFill) return false;
   if (input.weekStatus !== "locked") return false;
   return Boolean(input.meal?.title.trim());
+}
+
+/**
+ * Featured blue-card eyebrow on /week. `todayIso` is the household calendar
+ * date (`todayInTimeZone`). The featured night is that meal's `nightDate`.
+ */
+export function featuredMealEyebrow(nightDate: string, todayIso: string): string {
+  if (nightDate === todayIso) return "Tonight’s meal";
+  return `${weekdayLabelFromNight(nightDate)}’s meal`;
 }

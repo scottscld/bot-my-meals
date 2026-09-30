@@ -88,7 +88,9 @@ describe("Clear Sky lock-success craft", () => {
     expect(chrome).toContain('data-slot="lock-success-list"');
     expect(chrome).toContain('data-slot="lock-success-recipes"');
     expect(chrome).toContain("LOCK_SUCCESS_LIST_CTA");
-    expect(chrome).toContain("lockSuccessRecipesKicker");
+    expect(chrome).toContain("featuredMealEyebrow");
+    expect(chrome).not.toContain("lockSuccessRecipesKicker");
+    expect(chrome).not.toContain("First meal");
     expect(chrome).toContain("text-white");
     expect(chrome).toContain("truncate");
     expect(chrome).toContain("rounded-[12px]");

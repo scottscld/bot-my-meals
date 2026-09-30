@@ -8,6 +8,7 @@ import { WeekStrip } from "@/components/week-strip";
 import { UNLOCK_WEEK_CONFIRM } from "./lock-success";
 import type { Meal, Vote } from "./types";
 import {
+  featuredMealEyebrow,
   nightHasStripMeal,
   nightStaysLocked,
   showFirstMealRow,
@@ -42,6 +43,25 @@ function meal(id: string, nightDate: string, title: string): Meal {
     estimatedCostAsOf: null,
   };
 }
+
+describe("featured meal eyebrow", () => {
+  it("uses Tonight’s meal when the featured night is today in the house timezone", () => {
+    expect(featuredMealEyebrow("2026-09-30", "2026-09-30")).toBe("Tonight’s meal");
+    expect(featuredMealEyebrow("2026-09-30", "2026-09-30")).not.toContain("·");
+    expect(featuredMealEyebrow("2026-09-30", "2026-09-30")).not.toContain("Wednesday");
+    expect(featuredMealEyebrow("2026-09-30", "2026-09-30")).not.toContain("First meal");
+  });
+
+  it("uses the full weekday and a curly apostrophe when the featured night is not today", () => {
+    expect(featuredMealEyebrow("2026-10-01", "2026-09-30")).toBe("Thursday’s meal");
+    expect(featuredMealEyebrow("2026-09-27", "2026-09-30")).toBe("Sunday’s meal");
+    expect(featuredMealEyebrow("2026-10-03", "2026-09-30")).toBe("Saturday’s meal");
+    expect(featuredMealEyebrow("2026-10-01", "2026-09-30")).not.toContain("Tonight");
+    expect(featuredMealEyebrow("2026-10-01", "2026-09-30")).not.toContain("·");
+    expect(featuredMealEyebrow("2026-10-01", "2026-09-30")).not.toContain("First meal");
+    expect(featuredMealEyebrow("2026-10-01", "2026-09-30")).toContain("\u2019");
+  });
+});
 
 describe("week chrome lock rules", () => {
   it("keeps past nights read-only after a mid-week unlock and locks every night while the week is locked", () => {
@@ -191,21 +211,24 @@ describe("week chrome markup", () => {
         locked: true,
         mutedDates: [],
         showShoppingList: true,
-        firstMeal: { id: "tue", title: "Lemon roast chicken", weekday: "Tuesday" },
+        firstMeal: { id: "tue", title: "Lemon roast chicken", nightDate: "2026-09-29" },
         onSelect: () => undefined,
         onStep: () => false,
         planNext: null,
       }),
     );
     expect(both).toContain("Open shopping list");
-    expect(both).toContain("First meal · Tuesday");
+    expect(both).toContain("Tuesday’s meal");
     expect(both).toContain("Lemon roast chicken");
     expect(both).toContain("text-white");
     expect(both).toContain("truncate");
     expect(both).toContain('href="/list"');
     expect(both).toContain('href="/week/tue"');
-    expect(both.indexOf("Open shopping list")).toBeLessThan(both.indexOf("First meal · Tuesday"));
+    expect(both.indexOf("Open shopping list")).toBeLessThan(both.indexOf("Tuesday’s meal"));
     expect(both).not.toContain("See recipes");
+    expect(both).not.toContain("First meal");
+    expect(both).not.toContain("Tonight");
+    expect(both).not.toContain("Tuesday’s meal ·");
 
     const mealOnly = renderToStaticMarkup(
       createElement(WeekChromeView, {
@@ -216,15 +239,38 @@ describe("week chrome markup", () => {
         locked: true,
         mutedDates: [],
         showShoppingList: false,
-        firstMeal: { id: "tue", title: "Tacos", weekday: "Tuesday" },
+        firstMeal: { id: "tue", title: "Tacos", nightDate: "2026-09-29" },
         onSelect: () => undefined,
         onStep: () => false,
         planNext: null,
       }),
     );
     expect(mealOnly).not.toContain("Open shopping list");
-    expect(mealOnly).toContain("First meal · Tuesday");
+    expect(mealOnly).toContain("Tuesday’s meal");
     expect(mealOnly).toContain("Tacos");
+    expect(mealOnly).not.toContain("First meal");
+    expect(mealOnly).not.toContain("Tuesday’s meal ·");
+
+    const tonight = renderToStaticMarkup(
+      createElement(WeekChromeView, {
+        startsOn,
+        nights,
+        selectedMealId: "mon",
+        todayIso: "2026-09-28",
+        locked: true,
+        mutedDates: [],
+        showShoppingList: false,
+        firstMeal: { id: "mon", title: "Soup", nightDate: "2026-09-28" },
+        onSelect: () => undefined,
+        onStep: () => false,
+        planNext: null,
+      }),
+    );
+    expect(tonight).toContain("Tonight’s meal");
+    expect(tonight).toContain("Soup");
+    expect(tonight).not.toContain("Monday’s meal");
+    expect(tonight).not.toContain("First meal");
+    expect(tonight).not.toContain("Tonight’s meal ·");
   });
 
   it("puts Unlock week beside the Locked chip with a confirm spinner", () => {

@@ -209,7 +209,7 @@ function WeekBallot() {
       ? {
           id: dinner.id,
           title: dinner.title,
-          weekday: weekdayLabelFromNight(dinner.nightDate),
+          nightDate: dinner.nightDate,
         }
       : null;
   const stripNights = viewingPast
