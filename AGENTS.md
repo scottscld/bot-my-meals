@@ -8,8 +8,6 @@ GitHub Actions is CI-only (`npm ci`, `npm test`, `npm run lint`, `npm run build:
 
 Week and plan changes POST a wake (`week_locked`, `needs_work`, `check_now`) and the bot writes updates back to the site. House → Wake your Bot is required before the first Create this week's meals. There is no check-frequency control. A cooking week and one planning week can both be open; `needs_work` looks at either. See `docs/bot-routines.md`.
 
-Managed staging is a separate Worker `bot-my-meals-managed-staging` (`wrangler.managed-staging.jsonc`, `npm run deploy:managed-staging`). Do not point Workers Builds or `scripts/cf-deploy.mjs` at it. See `docs/managed-staging.md`.
-
 Next.js agent notes: keep the block below when `next dev` rewrites it.
 
 

@@ -81,7 +81,7 @@ This is the easy default for anyone. Cloudflare dashboard → connect GitHub to 
 | Build watch paths — Include | `src/*, public/*, scripts/*, package.json, package-lock.json, .npmrc, wrangler.jsonc, open-next.config.ts, next.config.ts` |
 | Build watch paths — Exclude | (leave empty, or exclude docs-only paths if you prefer) |
 
-`npm run build:worker` (not bare `npx opennextjs-cloudflare build`) and `npm run deploy` (root or this repo) still target Worker **`bot-my-meals`**. `scripts/cf-deploy.mjs` promotes on `main` and uploads preview versions on other branches. If the Cloudflare dashboard still has the old build command `npx opennextjs-cloudflare build`, change it to `npm run build:worker`. That is a **command** update, not a hostname/DNS change. Managed staging is a different Worker and command: [`docs/managed-staging.md`](docs/managed-staging.md).
+`npm run build:worker` (not bare `npx opennextjs-cloudflare build`) and `npm run deploy` (root or this repo) still target Worker **`bot-my-meals`**. `scripts/cf-deploy.mjs` promotes on `main` and uploads preview versions on other branches. If the Cloudflare dashboard still has the old build command `npx opennextjs-cloudflare build`, change it to `npm run build:worker`. That is a **command** update, not a hostname/DNS change.
 
 Watch paths and click-by-click: [`docs/workers-builds.md`](docs/workers-builds.md).
 
