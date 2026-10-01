@@ -22,7 +22,7 @@ Docs-only commits (including `docs/*`) do not match these include paths, so they
 
 `npm run build:worker` runs OpenNext for this app. **Do not** put bare `npx opennextjs-cloudflare build` in the dashboard without the npm script — that can miss `prebuild` PWA icon copies.
 
-`node scripts/cf-deploy.mjs`: `main` → `wrangler deploy` (promote Worker `bot-my-meals`); any other branch → `wrangler versions upload` (preview only).
+`node scripts/cf-deploy.mjs`: `main` → `wrangler deploy` (promote Worker `bot-my-meals`); any other branch → `wrangler versions upload` (preview only). Do not replace that deploy command with `npm run deploy:managed-staging` — that script targets a different Worker (`bot-my-meals-managed-staging`). See [`docs/managed-staging.md`](managed-staging.md).
 
 ## Click pass (do this once)
 
