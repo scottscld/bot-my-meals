@@ -2,7 +2,7 @@
 
 `wrangler deploy` **does not flip DNS**. Do not uncomment `custom_domain` routes in `wrangler.jsonc`. Worker name stays **`bot-my-meals`** — do not rename it.
 
-Paid managed `{handle}.botmymeals.com` is later. Do not build billing or multi-tenant hosting. DIY users are **not** put on `{handle}.botmymeals.com`.
+Paid managed `{handle}.botmymeals.com` is later. Do not build billing or multi-tenant hosting on the DIY Worker. A separate staging Worker is documented in [`docs/managed-staging.md`](managed-staging.md). DIY users are **not** put on `{handle}.botmymeals.com`.
 
 ## Your HTTPS origin
 
