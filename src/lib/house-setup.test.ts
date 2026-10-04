@@ -246,7 +246,9 @@ describe("house setup surfaces", () => {
     expect(provider).toContain("requestWeekBallot");
     expect(provider).toContain("fetchBotWakeConfigured");
     expect(provider).toContain("FINISH_WAKE_BEFORE_CREATE");
-    expect(provider).toContain('table: "ballot_requests"');
+    expect(provider).toContain("attachHouseholdLive");
+    const live = readFileSync(path.join(srcRoot, "lib/household-live.ts"), "utf8");
+    expect(live).toContain('"ballot_requests"');
     expect(provider).not.toContain("localStorage");
     expect(types).toContain("setupStep");
     expect(types).toContain("weeklyBudgetCents");

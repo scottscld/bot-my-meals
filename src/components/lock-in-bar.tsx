@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Loader2, Lock } from "lucide-react";
 import { useSupper } from "@/components/supper-provider";
 import { useViewedWeek } from "@/components/use-viewed-week";
+import { memberName } from "@/lib/names";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -51,7 +52,7 @@ export function LockInBar() {
   const hint = lockInHint(nights, myPicks);
 
   if (!canVote || submitted) {
-    const names = waitingOn(snapshot.memberships, scope.submissions).map((member) => member.displayName);
+    const names = waitingOn(snapshot.memberships, scope.submissions).map((member) => memberName(member));
     const line = waitingOnLabel(names);
     if (!line) return null;
     return <p className="type-meta text-center text-muted-foreground">{line}</p>;

@@ -67,11 +67,11 @@ export function buildShoppingItems(input: {
   }));
 }
 
-/** Locked-list sticky headers — Trader Joe’s / Smith’s only. Never a cart. */
+/** Locked-list sticky headers. Known slugs keep their catalog names. Never a cart. */
 export const STORE_LABEL_TRADER_JOES = "Trader Joe's";
 export const STORE_LABEL_SMITHS = "Smith's";
 
-export function listStoreLabel(store: Pick<Store, "slug">): string | null {
+export function listStoreLabel(store: Pick<Store, "slug" | "name">): string {
   switch (store.slug) {
     case "trader-joes":
     case "trader-joe-s":
@@ -80,7 +80,7 @@ export function listStoreLabel(store: Pick<Store, "slug">): string | null {
     case "smith-s":
       return STORE_LABEL_SMITHS;
     default:
-      return null;
+      return store.name.trim() || "Other";
   }
 }
 
@@ -104,10 +104,29 @@ export function groupStickyStoreLists(
   items: ShoppingItem[],
   stores: Store[],
 ): Array<{ store: Store; label: string; items: ShoppingItem[] }> {
-  return groupItemsByStore(items, stores).flatMap((group) => {
-    const label = listStoreLabel(group.store);
-    return label ? [{ ...group, label }] : [];
-  });
+  const groups = groupItemsByStore(items, stores).map((group) => ({
+    ...group,
+    label: listStoreLabel(group.store),
+  }));
+  const known = new Set(stores.map((store) => store.id));
+  const orphans = items
+    .filter((item) => !known.has(item.storeId))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  if (orphans.length === 0) return groups;
+  return [
+    ...groups,
+    {
+      store: {
+        id: "other",
+        householdId: orphans[0]?.householdId ?? "",
+        name: "Other",
+        slug: "other",
+        sortOrder: Number.MAX_SAFE_INTEGER,
+      },
+      label: "Other",
+      items: orphans,
+    },
+  ];
 }
 
 export function formatQuantity(quantity: number, unit: string): string {

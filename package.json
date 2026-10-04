@@ -2,7 +2,7 @@
   "name": "bot-my-meals",
   "version": "0.1.0",
   "private": true,
-  "description": "Bot My Meals \u2014 dual-approve household dinner PWA (vote \u2192 lock \u2192 recipes + shopping list)",
+  "description": "Bot My Meals — dual-approve household dinner PWA (vote → lock → recipes + shopping list)",
   "scripts": {
     "dev": "next dev -p 43147 -H 0.0.0.0",
     "prebuild": "node scripts/write-pwa-icons.mjs",
@@ -17,6 +17,7 @@
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
   },
   "dependencies": {
+    "@block65/webcrypto-web-push": "^2.0.0",
     "@opennextjs/cloudflare": "^1.20.6",
     "@supabase/ssr": "^0.12.5",
     "@supabase/supabase-js": "^2.113.0",

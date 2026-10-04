@@ -8,6 +8,7 @@ export function createSupabaseBrowserClient() {
   const secure = cookieSecureFromLocation(
     typeof window === "undefined" ? undefined : window.location.protocol,
   );
+  // Realtime auth is set in the provider: getSession, then realtime.setAuth, before subscribe.
   return createBrowserClient(config.url, config.anonKey, {
     cookieOptions: supabaseAuthCookieOptions(secure),
     auth: {

@@ -43,6 +43,7 @@ describe("status strip copy", () => {
 
   it("never says Still voting", () => {
     expect(waitingOnCopy(["Alex", "Sam"])).toBe("Waiting on Alex and Sam");
+    expect(waitingOnCopy(["Madison", "Ian"])).toBe("Waiting on Madison and Ian");
     expect(waitingOnCopy(["Alex", "Sam", "Jordan"])).toBe("Waiting on 3 people");
     expect(waitingOnCopy([])).toBe("Waiting on others");
     expect(JSON.stringify(statusStripCopy("waiting_on_others", ["Alex"]))).not.toContain(
@@ -96,6 +97,14 @@ describe("status strip mid-vote wiring", () => {
       { id: "s", displayName: "Sam", done: false },
     ]);
     expect(waitingOnNames(progress)).toEqual(["Sam"]);
+    const blank = voter({
+      membershipId: "m",
+      displayName: "",
+      email: "madison@example.com",
+      done: false,
+    });
+    expect(waitingOnNames([blank])).toEqual(["madison"]);
+    expect(statusStripPeople([blank])[0]?.displayName).toBe("madison");
     expect(weekStatusStripVisible(0)).toBe(false);
     expect(weekStatusStripVisible(7)).toBe(true);
   });

@@ -1,4 +1,5 @@
 import type { VoterProgress } from "./lock";
+import { memberName } from "./names";
 
 export const STATUS_STRIP_STATES = [
   "your_turn",
@@ -24,13 +25,13 @@ export type StatusStripPerson = {
 export function statusStripPeople(progress: VoterProgress[]): StatusStripPerson[] {
   return progress.map((voter) => ({
     id: voter.membershipId,
-    displayName: voter.displayName,
+    displayName: memberName(voter),
     done: voter.done,
   }));
 }
 
 export function waitingOnNames(progress: VoterProgress[]): string[] {
-  return progress.filter((voter) => !voter.done).map((voter) => voter.displayName);
+  return progress.filter((voter) => !voter.done).map((voter) => memberName(voter));
 }
 
 /** Empty week has no mid-vote strip — seed panel only, no kit shell. */

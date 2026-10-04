@@ -139,13 +139,13 @@ describe("shopping merge", () => {
 });
 
 describe("sticky store labels", () => {
-  it("labels Trader Joe's and Smith's only — never Kroger or a third store", () => {
-    expect(listStoreLabel({ slug: "trader-joes" })).toBe(STORE_LABEL_TRADER_JOES);
-    expect(listStoreLabel({ slug: "smiths" })).toBe(STORE_LABEL_SMITHS);
-    expect(listStoreLabel({ slug: "trader-joe-s" })).toBe(STORE_LABEL_TRADER_JOES);
-    expect(listStoreLabel({ slug: "smith-s" })).toBe(STORE_LABEL_SMITHS);
-    expect(listStoreLabel({ slug: "kroger" })).toBeNull();
-    expect(listStoreLabel({ slug: "costco" })).toBeNull();
+  it("labels Trader Joe's and Smith's, and keeps every other store name", () => {
+    expect(listStoreLabel({ slug: "trader-joes", name: "TJ" })).toBe(STORE_LABEL_TRADER_JOES);
+    expect(listStoreLabel({ slug: "smiths", name: "Smiths Market" })).toBe(STORE_LABEL_SMITHS);
+    expect(listStoreLabel({ slug: "trader-joe-s", name: "Trader Joe's" })).toBe(STORE_LABEL_TRADER_JOES);
+    expect(listStoreLabel({ slug: "smith-s", name: "Smith's" })).toBe(STORE_LABEL_SMITHS);
+    expect(listStoreLabel({ slug: "kroger", name: "Kroger" })).toBe("Kroger");
+    expect(listStoreLabel({ slug: "costco", name: "Costco" })).toBe("Costco");
     expect(STORE_LABEL_TRADER_JOES).toBe("Trader Joe's");
     expect(STORE_LABEL_SMITHS).toBe("Smith's");
 
@@ -197,14 +197,52 @@ describe("sticky store labels", () => {
     ];
 
     const groups = groupStickyStoreLists(items, stores);
-    expect(groups.map((group) => group.label)).toEqual(["Trader Joe's", "Smith's"]);
+    expect(groups.map((group) => group.label)).toEqual(["Trader Joe's", "Kroger", "Smith's"]);
     expect(groups.flatMap((group) => group.items.map((item) => item.name))).toEqual([
       "Salsa",
+      "Milk",
       "Chicken",
     ]);
-    expect(JSON.stringify(groups)).not.toContain("Kroger");
-    expect(JSON.stringify(groups)).not.toContain("Milk");
-    expect(JSON.stringify(groups)).not.toContain("399");
+    expect(listItemDisplay(items[1])).toEqual({ name: "Milk", quantity: "1 gal" });
+    expect(JSON.stringify(listItemDisplay(items[1]))).not.toContain("399");
+  });
+
+  it("keeps an H-E-B section and parks a missing store under Other", () => {
+    const stores: Store[] = [
+      { id: "heb", householdId: "h", name: "H-E-B", slug: "h-e-b", sortOrder: 0 },
+    ];
+    const items: ShoppingItem[] = [
+      ...Array.from({ length: 30 }, (_, index) => ({
+        id: `heb-${index}`,
+        householdId: "h",
+        shoppingListId: "l",
+        storeId: "heb",
+        name: `Item ${String(index).padStart(2, "0")}`,
+        quantity: 1,
+        unit: "ct",
+        priceCents: null,
+        priceSource: null,
+        pricedAt: null,
+        checked: false,
+      })),
+      {
+        id: "orphan",
+        householdId: "h",
+        shoppingListId: "l",
+        storeId: "missing",
+        name: "Loose onion",
+        quantity: 1,
+        unit: "ct",
+        priceCents: null,
+        priceSource: null,
+        pricedAt: null,
+        checked: false,
+      },
+    ];
+    const groups = groupStickyStoreLists(items, stores);
+    expect(groups.map((group) => group.label)).toEqual(["H-E-B", "Other"]);
+    expect(groups[0]?.items).toHaveLength(30);
+    expect(groups[1]?.items.map((item) => item.name)).toEqual(["Loose onion"]);
   });
 
   it("renders items when the store slug is the apostrophe form smith-s", () => {

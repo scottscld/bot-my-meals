@@ -655,6 +655,61 @@ export async function supabaseCancelNightOptionsRequest(client: SupabaseClient, 
   if (error) throw new Error(error.message);
 }
 
+export async function supabaseSetMyDisplayName(client: SupabaseClient, name: string): Promise<string> {
+  const { data, error } = await client.rpc("set_my_display_name", { new_name: name });
+  if (error) throw new Error(error.message);
+  return String(data ?? name);
+}
+
+export async function supabaseSetMemberDisplayName(
+  client: SupabaseClient,
+  memberId: string,
+  name: string,
+): Promise<string> {
+  const { data, error } = await client.rpc("set_member_display_name", {
+    member_id: memberId,
+    new_name: name,
+  });
+  if (error) throw new Error(error.message);
+  return String(data ?? name);
+}
+
+export async function supabaseUpsertPushSubscription(
+  client: SupabaseClient,
+  subscription: { endpoint?: string; keys?: { p256dh?: string; auth?: string } },
+  userAgent: string,
+) {
+  const endpoint = subscription.endpoint ?? "";
+  const p256dh = subscription.keys?.p256dh ?? "";
+  const auth = subscription.keys?.auth ?? "";
+  const { error } = await client.rpc("upsert_push_subscription", {
+    p_endpoint: endpoint,
+    p_p256dh: p256dh,
+    p_auth: auth,
+    p_user_agent: userAgent,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function supabaseDeletePushSubscription(client: SupabaseClient, endpoint: string) {
+  const { error } = await client.rpc("delete_push_subscription", { p_endpoint: endpoint });
+  if (error) throw new Error(error.message);
+}
+
+export async function supabaseSetPushPrefs(
+  client: SupabaseClient,
+  endpoint: string,
+  menuReady: boolean,
+  weekLocked: boolean,
+) {
+  const { error } = await client.rpc("set_push_prefs", {
+    p_endpoint: endpoint,
+    p_menu_ready: menuReady,
+    p_week_locked: weekLocked,
+  });
+  if (error) throw new Error(error.message);
+}
+
 export async function supabaseUnlockWeek(
   client: SupabaseClient,
   session: Session,

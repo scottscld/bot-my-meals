@@ -27,6 +27,7 @@ import {
   waitingOnLabel,
   winnerForNight,
 } from "./choice-ballot";
+import { memberName } from "./names";
 import type { Household, MealOption, MealPick, Membership, OptionRequest, Week } from "./types";
 
 const household: Pick<Household, "nightHeadcounts" | "coupleNights" | "familySize" | "coupleSize"> = {
@@ -222,6 +223,16 @@ describe("waiting on voters", () => {
     expect(waitingOnLabel(["Sam"])).toBe("Waiting on Sam");
     expect(waitingOnLabel(["Sam", "Alex"])).toBe("Waiting on Sam and Alex");
     expect(waitingOnLabel(["Sam", "Alex", "Jo"])).toBe("Waiting on Sam, Alex, and Jo");
+    expect(waitingOnLabel(["Madison", "Ian"])).toBe("Waiting on Madison and Ian");
+  });
+
+  it("falls back to the email handle when the display name is blank", () => {
+    const unnamed = member("madison", "voter", "");
+    const waiting = waitingOn(
+      [owner, unnamed],
+      [{ weekId: "week-1", membershipId: "o", submittedAt: "2026-10-04T00:00:00.000Z" }],
+    );
+    expect(waiting.map((person) => memberName(person))).toEqual(["madison"]);
   });
 });
 

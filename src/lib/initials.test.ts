@@ -21,6 +21,11 @@ describe("memberInitials", () => {
   it("keeps a single character name as one letter", () => {
     expect(memberInitials("Q")).toBe("Q");
   });
+
+  it("uses two-word initials and the first two letters of a dotted handle", () => {
+    expect(memberInitials("Scott Rosemary")).toBe("SR");
+    expect(memberInitials("ledgers-cackle.0x")).toBe("LE");
+  });
 });
 
 describe("memberProgressInitial", () => {

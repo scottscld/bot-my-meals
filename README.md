@@ -360,6 +360,8 @@ npm run deploy
 
 `npm run deploy` (root or this repo) is only this alternate: it builds with OpenNext, then runs [`scripts/cf-deploy.mjs`](scripts/cf-deploy.mjs) (root [`scripts/cf-deploy.mjs`](scripts/cf-deploy.mjs) delegates there). **Production promote is `main` only** (`wrangler deploy` on Worker `bot-my-meals`). Any other branch → preview upload only (`wrangler versions upload`).
 
+Home Screen notifications (iOS 16.4+) are in [docs/push.md](docs/push.md). The Worker holds the VAPID keys and dispatch secret. It never holds the Supabase service-role key.
+
 `npm run build` (and OpenNext) run `prebuild`, which writes PWA icons into `public/icons` and `src/app/favicon.ico` / `src/app/icon.png`.
 
 ## CI/CD

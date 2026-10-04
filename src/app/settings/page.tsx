@@ -12,6 +12,8 @@ import { AuthGate } from "@/components/auth-gate";
 import { HouseCard } from "@/components/house-card";
 import { HouseStores } from "@/components/house-stores";
 import { InstallPrompt } from "@/components/install-prompt";
+import { NameField } from "@/components/name-field";
+import { PushOptIn } from "@/components/push-opt-in";
 import { InviteShare } from "@/components/invite-share";
 import { ManagePeople } from "@/components/manage-people";
 import { PeoplePerNight } from "@/components/people-per-night";
@@ -81,7 +83,7 @@ function SettingsBody() {
 
       <HouseCard>
         <p className="type-eyebrow text-primary">Signed in as</p>
-        <p className="type-title mt-1">{session?.displayName}</p>
+        <NameField />
         <p className="type-meta text-muted-foreground">
           {session?.email}
           {session?.role ? ` · ${roleLabel(session.role)}` : null}
@@ -102,6 +104,8 @@ function SettingsBody() {
           {signingOut ? "Signing out…" : "Sign out"}
         </Button>
       </HouseCard>
+
+      <PushOptIn />
 
       <AppearancePicker />
 

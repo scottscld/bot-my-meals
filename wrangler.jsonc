@@ -17,8 +17,10 @@
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "workers_dev": true,
   // Optional Worker secrets (dashboard or `wrangler secret put`). Never NEXT_PUBLIC_.
+  // Do not add a vars block — Workers Builds drops plain-text vars that are not listed here.
   // BOT_WAKE_WEBHOOK_URL and BOT_WAKE_WEBHOOK_KEY wake the household Grok Bot.
   // CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN let House → Wake your Bot save those two.
+  // VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT, and PUSH_DISPATCH_SECRET send web push.
   "preview_urls": true,
   "assets": {
     "directory": ".open-next/assets",

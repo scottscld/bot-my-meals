@@ -1,4 +1,5 @@
 import { memberInitials } from "@/lib/initials";
+import { memberName } from "@/lib/names";
 import { voteFor } from "@/lib/lock";
 import type { Membership, Vote, VoteChoice } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -29,13 +30,13 @@ export function VoteDots({
         return (
           <span
             key={member.id}
-            title={`${member.displayName}: ${vote?.choice ?? "no vote"}`}
+            title={`${memberName(member)}: ${vote?.choice ?? "no vote"}`}
             className={cn(
               "inline-flex size-7 items-center justify-center rounded-full text-[11px] font-bold",
               COLORS[vote?.choice ?? "empty"],
             )}
           >
-            {memberInitials(member.displayName)}
+            {memberInitials(memberName(member))}
           </span>
         );
       })}

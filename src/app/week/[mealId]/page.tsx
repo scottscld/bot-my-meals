@@ -16,6 +16,7 @@ import { formatNightDate, weekdayLabelFromNight } from "@/lib/dates";
 import { servingsLabel } from "@/lib/headcount";
 import { REPLACEMENT_IDEAS } from "@/lib/ideas";
 import { canActOnBallot, isNightOff, latestVoteForMeal, voteFor, votingMembers } from "@/lib/lock";
+import { memberName } from "@/lib/names";
 import { scopeForMeal, weekHomeTitle } from "@/lib/open-weeks";
 import { nightShowsRecipePending } from "@/lib/post-lock-waiting";
 import { SAVE_TOAST, UNSAVE_TOAST, mealRecipeKey, mealSaveAvailability, savedMealForKey } from "@/lib/saved-meals";
@@ -171,7 +172,7 @@ function MealDetail({ mealId }: { mealId: string }) {
                 return (
                   <li key={member.id} className="rounded-[14px] bg-secondary/70 px-4 py-3">
                     <p className="font-semibold">
-                      {member.displayName}
+                      {memberName(member)}
                       {you ? " (you)" : ""}
                     </p>
                     <p className="type-meta text-muted-foreground">

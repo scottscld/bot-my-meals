@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Pencil } from "lucide-react";
 import { HouseCard } from "@/components/house-card";
 import { useSupper } from "@/components/supper-provider";
 import { Badge } from "@/components/ui/badge";
@@ -9,7 +9,85 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { Role } from "@/lib/types";
+import { memberName, normalizeDisplayName } from "@/lib/names";
+import type { Membership } from "@/lib/types";
 import { isAdmin, roleLabel } from "@/lib/users";
+
+function MemberName({ member, you }: { member: Membership; you: boolean }) {
+  const { updateMemberName } = useSupper();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(member.displayName);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const next = normalizeDisplayName(value);
+
+  if (!editing) {
+    return (
+      <div>
+        <p className="type-body font-medium">
+          {memberName(member)}
+          {you ? <span className="text-muted-foreground"> · you</span> : null}
+          <button
+            type="button"
+            className="ml-2 inline-flex size-7 items-center justify-center rounded-full text-primary"
+            aria-label={`Edit name for ${memberName(member)}`}
+            onClick={() => {
+              setValue(member.displayName);
+              setEditing(true);
+            }}
+          >
+            <Pencil className="size-4" aria-hidden />
+          </button>
+        </p>
+        <p className="type-meta text-muted-foreground">{member.email}</p>
+      </div>
+    );
+  }
+
+  return (
+    <form
+      className="min-w-0 flex-1 space-y-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!next) {
+          setError("Name must be 1–40 characters.");
+          return;
+        }
+        setBusy(true);
+        setError(null);
+        void updateMemberName(member.id, next)
+          .then(() => setEditing(false))
+          .catch((err: unknown) => {
+            setError(err instanceof Error ? err.message : "Could not save that name.");
+          })
+          .finally(() => setBusy(false));
+      }}
+    >
+      <Label htmlFor={`member-name-${member.id}`}>Name</Label>
+      <Input
+        id={`member-name-${member.id}`}
+        value={value}
+        maxLength={40}
+        autoComplete="name"
+        onChange={(event) => setValue(event.target.value)}
+        className="h-12 min-h-12 rounded-[var(--radius-button)] bg-card"
+      />
+      {error ? (
+        <p className="type-meta text-destructive" role="alert">
+          {error}
+        </p>
+      ) : null}
+      <div className="flex gap-2">
+        <Button type="submit" size="fat" variant="primary" className="flex-1" disabled={!next || busy}>
+          {busy ? "Saving…" : "Save"}
+        </Button>
+        <Button type="button" size="fat" variant="outline" onClick={() => setEditing(false)}>
+          Cancel
+        </Button>
+      </div>
+    </form>
+  );
+}
 
 export function ManagePeople() {
   const {
@@ -49,13 +127,10 @@ export function ManagePeople() {
               className="rounded-[14px] bg-secondary px-4 py-3"
             >
               <div className="flex min-h-12 items-start justify-between gap-3">
-                <div>
-                  <p className="type-body font-medium">
-                    {member.displayName}
-                    {current ? <span className="text-muted-foreground"> · you</span> : null}
-                  </p>
-                  <p className="type-meta text-muted-foreground">{member.email}</p>
-                </div>
+                <MemberName
+                  member={member}
+                  you={current}
+                />
                 <Badge variant="outline">{roleLabel(member.role)}</Badge>
               </div>
               <div className="mt-3 grid grid-cols-2 gap-2">

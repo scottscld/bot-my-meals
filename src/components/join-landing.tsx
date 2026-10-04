@@ -9,6 +9,9 @@ import { PasswordAuthForm } from "@/components/password-auth-form";
 import { HouseCard } from "@/components/house-card";
 import { useSupper } from "@/components/supper-provider";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { normalizeDisplayName } from "@/lib/names";
 import type { JoinPeek, JoinTokenStatus } from "@/lib/join";
 import {
   JOIN_CTA,
@@ -27,6 +30,7 @@ export function JoinLanding({ token }: { token: string }) {
     session,
     peekJoinToken,
     claimJoinToken,
+    updateMyName,
   } = useSupper();
   const router = useRouter();
   const tokenLooksValid = isJoinTokenFormat(token);
@@ -35,6 +39,8 @@ export function JoinLanding({ token }: { token: string }) {
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [askName, setAskName] = useState(false);
+  const [chosenName, setChosenName] = useState("");
 
   useEffect(() => {
     if (mode === "setup" || !ready || !tokenLooksValid) return;
@@ -67,7 +73,10 @@ export function JoinLanding({ token }: { token: string }) {
       setBusy(true);
       try {
         await claimJoinToken(token);
-        if (!cancelled) router.replace("/week");
+        if (!cancelled) {
+          setAskName(true);
+          setBusy(false);
+        }
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Could not join this house.");
@@ -104,6 +113,38 @@ export function JoinLanding({ token }: { token: string }) {
               Ask your partner to share a new invite link. There is no code to paste here.
             </p>
           </div>
+        ) : askName ? (
+          <form
+            className="space-y-3"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              const next = normalizeDisplayName(chosenName);
+              setBusy(true);
+              try {
+                if (next) await updateMyName(next);
+                router.replace("/week");
+              } catch (err) {
+                setError(err instanceof Error ? err.message : "Could not save that name.");
+                setBusy(false);
+              }
+            }}
+          >
+            <Label htmlFor="join-name">What should the house call you?</Label>
+            <Input
+              id="join-name"
+              value={chosenName}
+              maxLength={40}
+              autoComplete="name"
+              onChange={(event) => setChosenName(event.target.value)}
+              className="h-12 min-h-12 rounded-[var(--radius-button)] bg-card"
+            />
+            <Button type="submit" size="fat" variant="primary" className="w-full" disabled={busy}>
+              {busy ? "Saving…" : "Save"}
+            </Button>
+            <Button type="button" size="fat" variant="outline" className="w-full" onClick={() => router.replace("/week")}>
+              Skip
+            </Button>
+          </form>
         ) : session && session.householdId && session.householdId !== peek.householdId ? (
           <p className="type-body" role="alert">
             You are already in a house.
@@ -130,7 +171,8 @@ export function JoinLanding({ token }: { token: string }) {
                 setError(null);
                 try {
                   await claimJoinToken(token);
-                  router.replace("/week");
+                  setAskName(true);
+                  setBusy(false);
                 } catch (err) {
                   setError(err instanceof Error ? err.message : "Could not join this house.");
                   setBusy(false);

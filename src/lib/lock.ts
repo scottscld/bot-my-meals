@@ -1,5 +1,6 @@
 import { weekdayLabelFromNight } from "./dates";
 import { memberInitials } from "./initials";
+import { memberName } from "./names";
 import type { Meal, Membership, NightLifecycle, Role, Vote, VoteChoice } from "./types";
 
 export const LAST_WRITER_WINS_TOAST = "Updated for this night.";
@@ -206,6 +207,7 @@ export function isNightOff(
 export type VoterProgress = {
   membershipId: string;
   displayName: string;
+  email?: string;
   initials: string;
   done: boolean;
   remaining: number;
@@ -225,8 +227,9 @@ export function weekVoterProgress(
   ).length;
   return voters.map((voter) => ({
     membershipId: voter.id,
-    displayName: voter.displayName,
-    initials: memberInitials(voter.displayName),
+    displayName: memberName(voter),
+    email: voter.email,
+    initials: memberInitials(memberName(voter)),
     done: remaining === 0 && total > 0,
     remaining,
     completed: total - remaining,

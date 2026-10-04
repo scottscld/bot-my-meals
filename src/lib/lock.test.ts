@@ -213,6 +213,7 @@ describe("weekVoterProgress", () => {
       {
         membershipId: "alex",
         displayName: "Alex Rivera",
+        email: "alex@example.com",
         initials: "AR",
         done: false,
         remaining: 1,
@@ -222,6 +223,7 @@ describe("weekVoterProgress", () => {
       {
         membershipId: "sam",
         displayName: "Sam",
+        email: "sam@example.com",
         initials: "SA",
         done: false,
         remaining: 1,
@@ -252,5 +254,12 @@ describe("weekVoterProgress", () => {
     expect(progress.map((item) => item.displayName)).toEqual(["Alex Rivera", "Sam"]);
     expect(progress.every((item) => item.done)).toBe(true);
     expect(voterProgressSummary(progress)).toBe("Every voter is in.");
+  });
+
+  it("uses the email handle when the display name is blank", () => {
+    const blank: Membership = { ...voters[1], displayName: "   " };
+    const progress = weekVoterProgress(meals, [], [voters[0], blank]);
+    expect(progress.map((item) => item.displayName)).toEqual(["Alex Rivera", "sam"]);
+    expect(progress[1]?.initials).toBe("SA");
   });
 });

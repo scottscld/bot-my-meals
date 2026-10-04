@@ -259,6 +259,20 @@ export function patchMemberRole(
   };
 }
 
+/** Renames one membership. The caller's other rows in this snapshot stay put. */
+export function patchMemberName(
+  snapshot: HouseholdSnapshot,
+  membershipId: string,
+  name: string,
+): HouseholdSnapshot {
+  return {
+    ...snapshot,
+    memberships: snapshot.memberships.map((member) =>
+      member.id === membershipId ? { ...member, displayName: name } : member,
+    ),
+  };
+}
+
 export function patchSavedMealAdded(snapshot: HouseholdSnapshot, meal: SavedMeal): HouseholdSnapshot {
   const savedMeals = snapshot.savedMeals.filter((item) => item.recipeKey !== meal.recipeKey);
   return { ...snapshot, savedMeals: [meal, ...savedMeals] };

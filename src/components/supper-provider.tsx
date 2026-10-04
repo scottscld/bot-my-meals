@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { BallotToast } from "@/components/ballot-toast";
+import { syncPushSubscription } from "@/components/push-opt-in";
 import { botCheckForHousehold } from "@/lib/bot-check";
 import { patchPlanningPeople } from "@/lib/planning-people";
 import { FINISH_WAKE_BEFORE_CREATE, shouldWakeNeedsWork } from "@/lib/bot-wake";
@@ -24,6 +25,7 @@ import {
   patchHousehold,
   patchItemChecked,
   patchMealProposal,
+  patchMemberName,
   patchMemberRole,
   patchStoreAdded,
   patchStoreRemoved,
@@ -48,6 +50,9 @@ import {
 import { planningTargetStarts, scopeForMeal, scopeForRole } from "@/lib/open-weeks";
 import type { ViewedWeekSelection } from "@/lib/week-navigator";
 import { PASSWORD_MIN_LENGTH, passwordResetRedirectUrl } from "@/lib/login";
+import { attachHouseholdLive } from "@/lib/household-live";
+import { createRefreshScheduler } from "@/lib/live-refresh";
+import { normalizeDisplayName } from "@/lib/names";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
   fetchSupabaseSession,
@@ -61,7 +66,10 @@ import {
   supabaseLockWeek,
   supabaseReopenWeekVote,
   supabaseRequestNightOptions,
+  supabaseDeletePushSubscription,
   supabaseSetMealPick,
+  supabaseSetMemberDisplayName,
+  supabaseSetMyDisplayName,
   supabaseSubmitWeekVote,
   supabasePeekJoinToken,
   supabasePlanNextWeek,
@@ -129,6 +137,8 @@ type SupperContextValue = {
   }) => Promise<void>;
   addMember: (draft: MemberDraft) => Promise<void>;
   updateMemberRole: (memberId: string, role: Role) => Promise<void>;
+  updateMyName: (name: string) => Promise<void>;
+  updateMemberName: (memberId: string, name: string) => Promise<void>;
   removeMember: (memberId: string) => Promise<void>;
   removeInvite: (inviteId: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -193,6 +203,8 @@ function createSetupContext(): SupperContextValue {
     bootstrapHousehold: async () => setupUnavailable(),
     addMember: async () => setupUnavailable(),
     updateMemberRole: async () => setupUnavailable(),
+    updateMyName: async () => setupUnavailable(),
+    updateMemberName: async () => setupUnavailable(),
     removeMember: async () => setupUnavailable(),
     removeInvite: async () => setupUnavailable(),
     signOut: async () => {},
@@ -250,6 +262,7 @@ function SupabaseSupperProvider({ children }: { children: React.ReactNode }) {
   const patchesRef = useRef<PendingOptimistic<HouseholdSnapshot>[]>([]);
   const patchSeq = useRef(0);
   const refreshGen = useRef(0);
+  const lastRefreshAt = useRef(0);
   const chainsRef = useRef(new Map<string, Promise<void>>());
   const cancelledStoreAdds = useRef(new Set<string>());
   const storePatchKeys = useRef(new Map<string, string>());
@@ -297,6 +310,8 @@ function SupabaseSupperProvider({ children }: { children: React.ReactNode }) {
       patchesRef.current = [];
       publish(null);
       throw err;
+    } finally {
+      if (gen === refreshGen.current) lastRefreshAt.current = Date.now();
     }
   }, [publish]);
 
@@ -403,31 +418,32 @@ function SupabaseSupperProvider({ children }: { children: React.ReactNode }) {
       }
     })();
 
-    const client = createSupabaseBrowserClient();
-    if (!client) {
-      markReady();
-      return () => {
-        cancelled = true;
-      };
-    }
-    const channel = client
-      .channel("supper-live")
-      .on("postgres_changes", { event: "*", schema: "public", table: "votes" }, () => void refresh())
-      .on("postgres_changes", { event: "*", schema: "public", table: "meals" }, () => void refresh())
-      .on("postgres_changes", { event: "*", schema: "public", table: "weeks" }, () => void refresh())
-      .on("postgres_changes", { event: "*", schema: "public", table: "shopping_items" }, () => void refresh())
-      .on("postgres_changes", { event: "*", schema: "public", table: "ballot_requests" }, () => void refresh())
-      .on("postgres_changes", { event: "*", schema: "public", table: "saved_meals" }, () => void refresh())
-      .on("postgres_changes", { event: "*", schema: "public", table: "meal_options" }, () => void refresh())
-      .on("postgres_changes", { event: "*", schema: "public", table: "meal_option_picks" }, () => void refresh())
-      .on("postgres_changes", { event: "*", schema: "public", table: "week_vote_submissions" }, () => void refresh())
-      .on("postgres_changes", { event: "*", schema: "public", table: "meal_option_requests" }, () => void refresh())
-      .subscribe();
     return () => {
       cancelled = true;
-      void client.removeChannel(channel);
     };
   }, [refresh]);
+
+  useEffect(() => {
+    const userId = session?.userId;
+    const householdId = session?.householdId;
+    if (!userId || !householdId) return;
+    const client = createSupabaseBrowserClient();
+    if (!client) return;
+    const scheduler = createRefreshScheduler(() => {
+      void refresh();
+    }, 250);
+    const stop = attachHouseholdLive({
+      client,
+      householdId,
+      scheduleRefresh: () => scheduler.schedule(),
+      lastRefreshAt,
+    });
+    void syncPushSubscription(client);
+    return () => {
+      scheduler.cancel();
+      stop();
+    };
+  }, [refresh, session?.householdId, session?.userId]);
 
   const needsWorkRef = useRef<boolean | null>(null);
   const burstRef = useRef<number | null>(null);
@@ -600,9 +616,64 @@ function SupabaseSupperProvider({ children }: { children: React.ReactNode }) {
           // Signed out. The Home Screen app signs in with the new password.
         }
       },
+      updateMyName: (name) => {
+        const current = session;
+        const stored = normalizeDisplayName(name);
+        if (!current?.membershipId || !stored) {
+          return run(async () => {
+            throw new Error("Name must be 1–40 characters.");
+          });
+        }
+        const previous = current.displayName;
+        setSession({ ...current, displayName: stored });
+        return runOptimistic(
+          `name:${current.membershipId}`,
+          (snap) => patchMemberName(snap, current.membershipId ?? "", stored),
+          async () => {
+            const client = createSupabaseBrowserClient();
+            if (!client) throw new Error("Not signed in");
+            const saved = await supabaseSetMyDisplayName(client, stored);
+            setSession((latest) => (latest ? { ...latest, displayName: saved } : latest));
+          },
+        ).catch((err) => {
+          setSession((latest) => (latest ? { ...latest, displayName: previous } : latest));
+          throw err;
+        });
+      },
+      updateMemberName: (memberId, name) => {
+        const stored = normalizeDisplayName(name);
+        if (!stored) {
+          return run(async () => {
+            throw new Error("Name must be 1–40 characters.");
+          });
+        }
+        return runOptimistic(
+          `member-name:${memberId}`,
+          (snap) => patchMemberName(snap, memberId, stored),
+          async () => {
+            const client = createSupabaseBrowserClient();
+            if (!client) throw new Error("Not signed in");
+            const saved = await supabaseSetMemberDisplayName(client, memberId, stored);
+            if (session?.membershipId === memberId) {
+              setSession((latest) => (latest ? { ...latest, displayName: saved } : latest));
+            }
+          },
+        );
+      },
       signOut: () =>
         run(async () => {
           const client = createSupabaseBrowserClient();
+          try {
+            if (client && "serviceWorker" in navigator) {
+              const registrations = await navigator.serviceWorker.getRegistrations();
+              const subscription = await registrations[0]?.pushManager.getSubscription();
+              if (subscription?.endpoint) {
+                await supabaseDeletePushSubscription(client, subscription.endpoint);
+              }
+            }
+          } catch {
+            // Best effort. Sign-out still continues.
+          }
           await client?.auth.signOut();
         }),
       setVote: (mealId, choice, note) => {

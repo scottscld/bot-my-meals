@@ -10,6 +10,7 @@ import {
 } from "@/lib/choice-ballot";
 import { formatMealCardDayLabel } from "@/lib/dates";
 import { memberInitials } from "@/lib/initials";
+import { memberName } from "@/lib/names";
 import type { Household, MealOption, MealPick, Membership, OptionRequest, Week } from "@/lib/types";
 
 export function ChoiceResults({
@@ -68,10 +69,10 @@ export function ChoiceResults({
                             return (
                               <span
                                 key={id}
-                                title={member.displayName}
+                                title={memberName(member)}
                                 className="inline-flex size-7 items-center justify-center rounded-full bg-secondary text-[11px] font-bold text-muted-foreground"
                               >
-                                {memberInitials(member.displayName)}
+                                {memberInitials(memberName(member))}
                               </span>
                             );
                           })}

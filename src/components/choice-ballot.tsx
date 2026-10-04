@@ -20,6 +20,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
+import { memberName } from "@/lib/names";
 import {
   ASK_FOR_NEW_OPTIONS,
   EVERYONE_IN,
@@ -112,12 +113,12 @@ export function ChoiceBallot({
           <p className="type-body">
             {LOCKED_IN_SELF}{" "}
             <span className="text-muted-foreground">
-              {holdouts.length === 0 ? EVERYONE_IN : waitingOnLabel(holdouts.map((member) => member.displayName))}
+              {holdouts.length === 0 ? EVERYONE_IN : waitingOnLabel(holdouts.map((member) => memberName(member)))}
             </span>
           </p>
         ) : (
           <p className="type-meta text-muted-foreground">
-            {holdouts.length === 0 ? EVERYONE_IN : waitingOnLabel(holdouts.map((member) => member.displayName))}
+            {holdouts.length === 0 ? EVERYONE_IN : waitingOnLabel(holdouts.map((member) => memberName(member)))}
           </p>
         )}
         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -126,7 +127,7 @@ export function ChoiceBallot({
             return (
               <div key={member.id} className="flex items-center gap-1">
                 <span
-                  title={`${member.displayName}: ${lockedIn ? "locked in" : "still picking"}`}
+                  title={`${memberName(member)}: ${lockedIn ? "locked in" : "still picking"}`}
                   className={cn(
                     "inline-flex size-7 items-center justify-center rounded-full text-[11px] font-bold",
                     lockedIn
@@ -134,7 +135,7 @@ export function ChoiceBallot({
                       : "bg-secondary text-muted-foreground",
                   )}
                 >
-                  {lockedIn ? <Check className="size-3.5" aria-hidden /> : memberInitials(member.displayName)}
+                  {lockedIn ? <Check className="size-3.5" aria-hidden /> : memberInitials(memberName(member))}
                 </span>
                 {admin && lockedIn ? (
                   <button
@@ -260,7 +261,7 @@ export function ChoiceBallot({
           <DialogHeader>
             <DialogTitle className="type-section">
               {REOPEN_VOTE_LABEL}
-              {reopenMember ? ` for ${reopenMember.displayName}?` : "?"}
+              {reopenMember ? ` for ${memberName(reopenMember)}?` : "?"}
             </DialogTitle>
           </DialogHeader>
           <DialogFooter>

@@ -425,7 +425,9 @@ describe("saved meals surfaces", () => {
     expect(repo).toContain("supabaseSaveMeal");
     expect(repo).toContain("supabaseRemoveSavedMeal");
     expect(repo).toContain("supabaseRequestSavedMeal");
-    expect(provider).toContain('table: "saved_meals"');
+    expect(provider).toContain("attachHouseholdLive");
+    const live = readFileSync(path.join(srcRoot, "lib/household-live.ts"), "utf8");
+    expect(live).toContain('"saved_meals"');
     expect(provider).toContain("toggleSavedMeal");
     expect(provider).toContain("lastCookedAtForSave");
     expect(provider).not.toContain("week.lockedAt");

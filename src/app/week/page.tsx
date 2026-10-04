@@ -13,6 +13,7 @@ import { WaitingBotCheck } from "@/components/bot-check-frequency";
 import { BallotToast } from "@/components/ballot-toast";
 import { EmptyDayCard } from "@/components/empty-day-card";
 import { InstallPrompt } from "@/components/install-prompt";
+import { NameNudge } from "@/components/name-nudge";
 import { LockBar } from "@/components/lock-bar";
 import { LockInBar } from "@/components/lock-in-bar";
 import { EditNightsControl } from "@/components/edit-nights-control";
@@ -407,6 +408,7 @@ function WeekBallot() {
       }
     >
       <InstallPrompt />
+      <NameNudge />
       {viewingPast && past ? (
         <PastWeekDetail week={past} />
       ) : showPeopleGate && scope ? (

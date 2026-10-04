@@ -6,11 +6,12 @@ describe("three-choice voting migration", () => {
   const dir = path.resolve(import.meta.dirname, "../../supabase/migrations");
   const file = "20261003120000_three_choice_voting.sql";
 
-  it("sorts last and states the choice3 contract", () => {
+  it("states the choice3 contract", () => {
     const names = readdirSync(dir)
       .filter((name) => name.endsWith(".sql"))
       .sort();
-    expect(names.at(-1)).toBe(file);
+    expect(names).toContain(file);
+    expect(names.at(-1)).toBe("20261004120000_realtime_names_push.sql");
     const sql = readFileSync(path.join(dir, file), "utf8");
     expect(sql).toContain(
       "meal_option_picks_one_per_night unique (week_id, day_index, membership_id)",
