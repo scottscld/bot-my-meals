@@ -47,7 +47,7 @@ Home Screen web push for the household PWA (iOS 16.4 or later, and the same code
 
 5. Deploy `main`. Workers Builds ships `src/*` and `public/*`.
 
-6. On each iPhone: Safari → Share → Add to Home Screen → open the icon → House → Notifications → Turn on notifications → Allow → Send a test. If the app was installed before this change, close it and reopen it twice so `supper-shell-v4` takes over.
+6. On each iPhone: Safari → Share → Add to Home Screen → open the icon → House → Notifications → Turn on notifications → Allow → Send a test. If the app was installed before this change, remove the Home Screen icon and add it again so `supper-shell-v6` takes over. Closing the old icon does not drop its saved pages.
 
 ## What gets sent
 

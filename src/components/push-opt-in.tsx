@@ -26,8 +26,8 @@ export async function syncPushSubscription(client: SupabaseClient) {
 }
 
 export function PushOptIn() {
-  const [publicKey, setPublicKey] = useState<string | null | undefined>(undefined);
-  const [configError, setConfigError] = useState(false);
+  const [publicKey, setPublicKey] = useState<string | null>(null);
+  const [phase, setPhase] = useState<"loading" | "ready" | "missing" | "error">("loading");
   const [permissionOverride, setPermissionOverride] = useState<NotificationPermission | null>(null);
   const [endpoint, setEndpoint] = useState<string | null>(null);
   const [menuReady, setMenuReady] = useState(true);
@@ -47,27 +47,32 @@ export function PushOptIn() {
       })
       .then((body) => {
         if (cancelled) return;
-        setConfigError(false);
-        setPublicKey(typeof body.publicKey === "string" && body.publicKey ? body.publicKey : null);
+        const key = typeof body.publicKey === "string" && body.publicKey ? body.publicKey : "";
+        setPublicKey(key || null);
+        setPhase(key ? "ready" : "missing");
       })
       .catch(() => {
-        if (!cancelled) setConfigError(true);
+        if (!cancelled) setPhase("error");
       });
     return () => {
       cancelled = true;
     };
   }, []);
 
-  if (configError) {
+  if (phase !== "ready" || !publicKey) {
+    const detail =
+      phase === "error"
+        ? "Notifications didn’t load. Pull down to refresh this page."
+        : phase === "missing"
+          ? "Notifications aren’t available on this copy of the app yet."
+          : "Checking this phone…";
     return (
       <HouseCard className="mt-6" data-slot="push-opt-in">
         <h2 className="type-section text-primary">Notifications</h2>
-        <p className="type-body mt-2">Notifications didn’t load. Close the app and open it from the Home Screen icon.</p>
+        <p className="type-body mt-2">{detail}</p>
       </HouseCard>
     );
   }
-
-  if (!publicKey) return null;
 
   const livePermission: NotificationPermission =
     typeof Notification === "undefined" ? "default" : Notification.permission;

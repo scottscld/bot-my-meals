@@ -1,9 +1,25 @@
-const CACHE = "supper-shell-v4";
+const CACHE = "supper-shell-v6";
 const SHELL = ["/", "/week", "/list", "/settings", "/login", "/setup", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
+  // House documents are no-store. A rejected precache must not leave the old worker in control.
   event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()),
+    caches
+      .open(CACHE)
+      .then((cache) =>
+        Promise.all(
+          SHELL.map((path) =>
+            fetch(path)
+              .then((response) => {
+                const cacheControl = response.headers.get("cache-control") || "";
+                if (!response.ok || /no-store|no-cache/i.test(cacheControl)) return;
+                return cache.put(path, response);
+              })
+              .catch(() => {}),
+          ),
+        ),
+      )
+      .then(() => self.skipWaiting()),
   );
 });
 
@@ -21,6 +37,8 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith("/api/")) return;
+  // Let the browser load pages itself so a saved shell cannot hide new House UI.
+  if (event.request.mode === "navigate") return;
 
   event.respondWith(
     fetch(event.request)
