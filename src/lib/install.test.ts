@@ -76,7 +76,7 @@ describe("Clear Sky PWA craft", () => {
     expect(banner).not.toContain("Fraunces");
     expect(banner).not.toContain("Clear Sky");
     expect(sw).toContain('"/setup"');
-    expect(sw).toContain("supper-shell-v3");
+    expect(sw).toContain("supper-shell-v4");
     expect(shell).toContain("flex-1 px-4 pt-4");
     expect(shell).toContain("bg-card/95");
     expect(shell).toContain("pt-[env(safe-area-inset-top)]");

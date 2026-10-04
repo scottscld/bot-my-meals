@@ -1,4 +1,4 @@
-const CACHE = "supper-shell-v3";
+const CACHE = "supper-shell-v4";
 const SHELL = ["/", "/week", "/list", "/settings", "/login", "/setup", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
