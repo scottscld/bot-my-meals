@@ -89,12 +89,16 @@ export function reuseVapidAuthorization(authorization: string, endpoint: string)
   return header;
 }
 
-/** kind + week, capped at 32 base64url-safe characters so a newer push replaces the old one. */
+/**
+ * kind + week, capped at 32 base64url characters so a newer push replaces the old one.
+ * Apple rejects a topic whose length mod 4 is 1 (BadWebPushTopic), so pad to a multiple of 4.
+ */
 export function pushTopic(kind: string, weekId: string | null | undefined): string {
   const safeKind = kind.replace(TOPIC_SAFE, "").slice(0, 20);
   const week = (weekId ?? "").replace(/-/g, "").replace(TOPIC_SAFE, "").slice(0, 11);
-  const topic = week ? `${safeKind}-${week}` : safeKind;
-  return topic.slice(0, 32);
+  const topic = (week ? `${safeKind}-${week}` : safeKind).slice(0, 32) || "notice";
+  const pad = (4 - (topic.length % 4)) % 4;
+  return topic + "0".repeat(pad);
 }
 
 export async function buildPushPayload(

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildPushPayload, canonicalizeEcdsaSignature, sendPush } from "./push-send";
+import { buildPushPayload, canonicalizeEcdsaSignature, pushTopic, sendPush } from "./push-send";
 
 function toBase64Url(bytes: Uint8Array): string {
   let binary = "";
@@ -44,12 +44,33 @@ describe("buildPushPayload", () => {
     expect(payload.headers["content-encoding"]).toBe("aes128gcm");
     expect(payload.headers.authorization.startsWith("vapid t=")).toBe(true);
     expect(payload.headers.topic?.length ?? 0).toBeLessThanOrEqual(32);
+    expect((payload.headers.topic?.length ?? 0) % 4).toBe(0);
   });
 
   it("marks a 410 as gone", async () => {
     const fetchImpl = vi.fn(async () => new Response(null, { status: 410 }));
     const result = await sendPush(await testSubscription(), message, await testVapid(), fetchImpl);
     expect(result).toEqual({ ok: false, gone: true, status: 410, reason: "" });
+  });
+});
+
+describe("pushTopic", () => {
+  it("pads every topic to a length Apple will accept", () => {
+    const topics = [
+      pushTopic("push-test", null),
+      pushTopic("menu_ready", null),
+      pushTopic("options_refreshed", null),
+      pushTopic("week_locked", null),
+      pushTopic("menu_ready", "fed4dffc-63f0-4107-925d-592bcacd4860"),
+      pushTopic("options_refreshed", "fed4dffc-63f0-4107-925d-592bcacd4860"),
+    ];
+    for (const topic of topics) {
+      expect(topic.length).toBeGreaterThan(0);
+      expect(topic.length).toBeLessThanOrEqual(32);
+      expect(topic.length % 4).toBe(0);
+      expect(topic).toMatch(/^[A-Za-z0-9_-]+$/);
+    }
+    expect(pushTopic("push-test", null)).toBe("push-test000");
   });
 });
 
