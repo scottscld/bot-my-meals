@@ -18,11 +18,12 @@ import {
   planWeekNightChanges,
   savedNewNightsToast,
   showWeekSpecialInstructions,
+  turnOffChoiceNightConfirm,
   turnOffDinnerConfirm,
   withFrozenNights,
 } from "@/lib/edit-nights";
 import { clampSpecialInstructions } from "@/lib/planning-people";
-import type { Household, Meal, Membership, Vote, WeekRole } from "@/lib/types";
+import type { Household, Meal, Membership, Vote, Week, WeekRole } from "@/lib/types";
 
 export function EditNightsSheet({
   open,
@@ -33,6 +34,7 @@ export function EditNightsSheet({
   meals,
   votes,
   memberships,
+  ballotMode = "single",
   frozenWeekdays,
   busy = false,
   onOpenChange,
@@ -47,6 +49,7 @@ export function EditNightsSheet({
   meals: readonly Pick<Meal, "id" | "title" | "nightDate" | "servings">[];
   votes: Vote[];
   memberships: Membership[];
+  ballotMode?: Week["ballotMode"];
   frozenWeekdays: readonly number[];
   busy?: boolean;
   onOpenChange: (open: boolean) => void;
@@ -54,6 +57,7 @@ export function EditNightsSheet({
   onSaved?: (message: string | null) => void;
 }) {
   const showNotes = showWeekSpecialInstructions({ role, stored: storedInstructions });
+  const turnOffConfirm = ballotMode === "choice3" ? turnOffChoiceNightConfirm : turnOffDinnerConfirm;
   const pending = useRef<{ counts: number[]; instructions: string | null } | null>(null);
   const [confirming, setConfirming] = useState<string[]>([]);
   const [sheetError, setSheetError] = useState<string | null>(null);
@@ -130,13 +134,13 @@ export function EditNightsSheet({
           >
             <p id="turn-off-night-title" className="type-body font-semibold">
               {confirming.length === 1
-                ? turnOffDinnerConfirm(confirming[0] ?? "")
+                ? turnOffConfirm(confirming[0] ?? "")
                 : "Turn off these nights?"}
             </p>
             {confirming.length > 1 ? (
               <ul className="type-meta mt-2 space-y-1 text-muted-foreground">
                 {confirming.map((weekday) => (
-                  <li key={weekday}>{turnOffDinnerConfirm(weekday)}</li>
+                  <li key={weekday}>{turnOffConfirm(weekday)}</li>
                 ))}
               </ul>
             ) : null}

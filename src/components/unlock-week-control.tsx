@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   LOCKED_CHIP_LABEL,
+  UNLOCK_WEEK_CHOICE_CONFIRM,
   UNLOCK_WEEK_CONFIRM,
   UNLOCK_WEEK_LABEL,
 } from "@/lib/lock-success";
@@ -86,7 +87,13 @@ export function UnlockWeekControl({ variant }: { variant: "inline" | "block" }) 
       >
         <DialogContent showCloseButton={false} className="rounded-[14px]">
           <DialogHeader>
-            <DialogTitle className="type-section">{UNLOCK_WEEK_CONFIRM}</DialogTitle>
+            <DialogTitle className="type-section">
+              {scope.week.ballotMode === "choice3" ? (
+                UNLOCK_WEEK_CHOICE_CONFIRM
+              ) : (
+                <>{UNLOCK_WEEK_CONFIRM}</>
+              )}
+            </DialogTitle>
           </DialogHeader>
           <DialogFooter>
             <Button

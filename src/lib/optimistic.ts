@@ -4,6 +4,7 @@ import { nightsPlannedFromHeadcounts } from "@/lib/house-setup";
 import type {
   HouseholdSettingsPatch,
   HouseholdSnapshot,
+  MealPick,
   MealProposalInput,
   Role,
   SavedMeal,
@@ -151,6 +152,33 @@ export function patchVote(
     };
   }
   return { ...snapshot, votes: nextVotes(snapshot.votes, input) };
+}
+
+function nextPicks(picks: MealPick[], pick: MealPick): MealPick[] {
+  const existing = picks.find(
+    (row) =>
+      row.weekId === pick.weekId &&
+      row.dayIndex === pick.dayIndex &&
+      row.membershipId === pick.membershipId,
+  );
+  if (!existing) return [...picks, pick];
+  return picks.map((row) =>
+    row === existing ? { ...existing, optionId: pick.optionId, updatedAt: pick.updatedAt } : row,
+  );
+}
+
+/** Replaces this voter's pick for one night. Other nights and other people stay. */
+export function patchPick(snapshot: HouseholdSnapshot, pick: MealPick): HouseholdSnapshot {
+  if (snapshot.planning?.week.id === pick.weekId) {
+    return {
+      ...snapshot,
+      planning: {
+        ...snapshot.planning,
+        picks: nextPicks(snapshot.planning.picks, pick),
+      },
+    };
+  }
+  return { ...snapshot, picks: nextPicks(snapshot.picks, pick) };
 }
 
 export function patchHousehold(

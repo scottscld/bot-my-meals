@@ -19,10 +19,10 @@ A new **This week** starts empty: **No dinners yet.** Empty week is one of these
 
 Once dinners are on the week:
 
-1. A week has seven proposed dinners (title, who eats, servings, time, one-line pitch).
-2. Each voting member can **Swap** or **Remove** a night. No tap leaves the dinner as-is.
-3. Actions are visible live. A swap can include a note (“too heavy”, “want tacos”).
-4. The week **locks after swaps and dinner requests are cleared.** Removed nights and untouched dinners do not block lock.
+1. Each active night has **3 options** (title, who eats, servings, time, one-line pitch).
+2. Each voting member swipes the options and picks one dinner per night.
+3. **None of these** asks for 3 new options for that night. Actions are visible live.
+4. Each voter taps **Lock in my vote**. The week locks when every voter is in. Most votes win. Ties go to the Admin’s pick, then the bot’s first option.
 5. After lock: full recipes and a merged shopping list, split by store. Removed nights are omitted. Prices stay blank unless a real source and as-of date exist.
 6. Before lock, the list screen shows meal titles only.
 
@@ -127,7 +127,7 @@ The app needs **all nine** files under [`supabase/migrations/`](supabase/migrati
 
 Skipping a file (or running them out of order) will break people, lock, off nights, or the post-create setup / invite link. File 6 grants `authenticated` `USAGE` on schema `private` — without it, Create household can succeed while you stay on **Create household**. File 7 adds `/join/<token>` links. File 8 is wizard v2 (`household_size`, `nights_planned`, `postal_code`, `ballot_requests`, no default Trader Joe’s / Smith’s on create). File 9 is `20260927040000_bot_check_cadence.sql` — run it with the others; it is not Install teaching for bot-check routines.
 
-After those nine, run every later file in [`supabase/migrations/`](supabase/migrations/) in filename order. That includes meal history, store slugs, week chrome, `supabase/migrations/20260928183000_saved_meals.sql` (household Saved meals), `supabase/migrations/20260928210000_planning_week.sql` (one cooking week plus one next week), `supabase/migrations/20260928233000_planning_people_gate.sql` (this next week’s plates and optional special instructions; saving them does not change House defaults), `supabase/migrations/20260929001000_week_scoped_edit_nights.sql` (Edit nights on the week you are viewing, including this cooking week; House defaults stay the template for new weeks), and `supabase/migrations/20260930040000_saved_meal_cook_night.sql` (Saved meals "Last cooked" is that dinner's night, not the week lock). See [`docs/saved-meals.md`](docs/saved-meals.md).
+After those nine, run every later file in [`supabase/migrations/`](supabase/migrations/) in filename order. That includes meal history, store slugs, week chrome, `supabase/migrations/20260928183000_saved_meals.sql` (household Saved meals), `supabase/migrations/20260928210000_planning_week.sql` (one cooking week plus one next week), `supabase/migrations/20260928233000_planning_people_gate.sql` (this next week’s plates and optional special instructions; saving them does not change House defaults), `supabase/migrations/20260929001000_week_scoped_edit_nights.sql` (Edit nights on the week you are viewing, including this cooking week; House defaults stay the template for new weeks), and `supabase/migrations/20260930040000_saved_meal_cook_night.sql` (Saved meals "Last cooked" is that dinner's night, not the week lock), and `supabase/migrations/20261003120000_three_choice_voting.sql` (3-choice voting). See [`docs/saved-meals.md`](docs/saved-meals.md).
 
 ### 5. Auth: Email on, Confirm email OFF
 
@@ -335,7 +335,7 @@ Check now / Get recipes now shows Checking… / Waking… until the request sett
 
 Saved → Request for next week always targets the planning week. Create that week if it is missing. People per night first (optional Special instructions) before that week’s ballot. Confirm Requested for next week. Do not request a week after next.
 
-On each wake, GET /api/bot/status with a household member access token (Authorization: Bearer). Do the work when needs_work is true on any open week, including fill_pending after lock when that week's recipes or shopping list are still empty. Fulfill by week. Do not treat a settled cooking week as idle if the planning week still needs work. Stay silent when nothing changed — no “no update” message. When Wake / webhook is configured (configured true), Waiting / Check now is wake / Your bot was notified only. Without wake configured, setup is incomplete — Check now still means message the Bot, but Install must still create and save the webhook. Do not create Adaptive / @every 1h / @every 6h bot-check routines.
+On each wake, GET /api/bot/status with a household member access token (Authorization: Bearer). Do the work when needs_work is true on any open week, including fill_pending after lock when that week's recipes or shopping list are still empty. Fulfill by week. Do not treat a settled cooking week as idle if the planning week still needs work. Stay silent when nothing changed — no “no update” message. On a choice3 week, pending_ballot or options_pending means write exactly 3 distinct options per listed night with submit_week_options (servings = that night's plates); never write meals directly on a choice3 week. The app writes the winners and locks the week when every voter taps Lock in my vote; then fill_pending as usual. When Wake / webhook is configured (configured true), Waiting / Check now is wake / Your bot was notified only. Without wake configured, setup is incomplete — Check now still means message the Bot, but Install must still create and save the webhook. Do not create Adaptive / @every 1h / @every 6h bot-check routines.
 
 Rules: easy for anyone; never invent grocery prices; cart adds only where the store actually supports them (don’t claim Smith’s or any store cart add unless it’s real). Do NOT invent prices. Do NOT claim unsupported cart features. Don’t stop at “try it without Supabase.” Worker name stays bot-my-meals.
 ```

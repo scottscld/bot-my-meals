@@ -18,15 +18,18 @@ With the URL set, **Check now** says “Wakes your Bot My Meals bot now.” **Ge
 
 ## On each wake
 
-`needs_work` can be true on **any open week** (this week or next week: ballot, meal, portion, a plate/people change the bot still needs to apply, or a locked week still missing recipes or that week’s shopping list). A settled cooking week does not hide a next-week ballot.
+`needs_work` can be true on **any open week** (this week or next week: ballot, meal, portion, a plate/people change the bot still needs to apply, options still needed, or a locked week still missing recipes or that week’s shopping list). A settled cooking week does not hide a next-week ballot.
 
-1. `GET /api/bot/status` with a household member’s Supabase access token: `Authorization: Bearer <access_token>`. Row Level Security scopes the read to that household. The body is small: `needs_work` and `reason`. It is not a full household snapshot.
+1. `GET /api/bot/status` with a household member’s Supabase access token: `Authorization: Bearer <access_token>`. Row Level Security scopes the read to that household. The body is small: `needs_work`, `reason`, and `work` when `needs_work` is true. `work` has `week_id`, `starts_on`, and `ballot_mode`. On a choice3 `pending_ballot` or `options_pending`, `work.nights` lists each night (`day_index`, `night_date`, `plates`, `need` of `options` or `new_options`, and `note` when someone asked for a new set). It is not a full household snapshot.
 2. If `needs_work` is false, stay silent. Do not send a “no update” message. `reason` may be `idle`, or `setup_incomplete` (still say nothing).
 3. If `needs_work` is true, fulfill `reason` for the week that needs work and stop:
    - `pending_ballot` — waiting for dinners on an open week (this week or next week). For next week, use that ballot’s `night_headcounts` and optional `special_instructions`. Empty instructions mean nothing extra. Do not write them back onto House plate defaults.
+   - `options_pending` — a choice3 week still needs 3 options on a night, or a night asked for a new set
    - `meal_pending` — an open swap or a new-dinner request on that week
    - `portion_pending` — a dinner’s servings don’t match the plates
    - `plate_or_people_change` — plates or household size changed and a dinner’s servings still need to catch up
    - `fill_pending` — that week is locked and a dinner is still missing a recipe, or that week’s shopping list is empty when a dinner needs groceries. Write those. Each week has its own list. Do not invent a list when nothing needs buying, and do not merge this week with next week.
+
+On a `choice3` week, `pending_ballot` and `options_pending` mean: call `submit_week_options` with exactly 3 distinct options per listed night, servings = that night's plates. Don't write `meals` on a choice3 week; the app writes the winners when everyone locks in. Honor `note` on `new_options`. Include `saved_recipe_keys` from the week's `ballot_requests` among the options.
 
 Never invent grocery prices. Never claim Smith’s cart adds.

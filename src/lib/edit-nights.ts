@@ -15,6 +15,10 @@ export function turnOffDinnerConfirm(weekday: string): string {
   return `Turn off ${weekday}? Removes that dinner from this week.`;
 }
 
+export function turnOffChoiceNightConfirm(weekday: string): string {
+  return `Turn off ${weekday}? That night\u2019s options go away.`;
+}
+
 /** Separate chrome control. The empty planning gate is already this form. */
 export function showEditNightsEntry(input: {
   past: boolean;

@@ -30,6 +30,7 @@ import {
   LIST_CHECK_SAVE_ERROR,
   patchSavedMealAdded,
   patchSavedMealRemoved,
+  patchPick,
   patchSavedMealRequest,
   patchShoppingPrompt,
   patchVote,
@@ -56,7 +57,12 @@ import {
   supabaseCreateJoinToken,
   supabaseInviteMember,
   supabaseJoinByCode,
+  supabaseCancelNightOptionsRequest,
   supabaseLockWeek,
+  supabaseReopenWeekVote,
+  supabaseRequestNightOptions,
+  supabaseSetMealPick,
+  supabaseSubmitWeekVote,
   supabasePeekJoinToken,
   supabasePlanNextWeek,
   supabaseProposeReplacement,
@@ -131,6 +137,11 @@ type SupperContextValue = {
   applyIdea: (mealId: string, ideaId: string) => Promise<void>;
   markLeftovers: (mealId: string, sourceMealId: string) => Promise<void>;
   lockWeek: () => Promise<void>;
+  pickOption: (optionId: string) => Promise<void>;
+  lockInVote: () => Promise<void>;
+  reopenVote: (memberId?: string) => Promise<void>;
+  requestNewOptions: (dayIndex: number, note: string) => Promise<void>;
+  cancelNewOptions: (requestId: string) => Promise<void>;
   unlockWeek: () => Promise<void>;
   closeShoppingPrompt: (prompt: Extract<ShoppingPrompt, "done" | "dismissed">) => Promise<void>;
   toggleItem: (itemId: string, checked: boolean) => Promise<void>;
@@ -190,6 +201,11 @@ function createSetupContext(): SupperContextValue {
     applyIdea: async () => setupUnavailable(),
     markLeftovers: async () => setupUnavailable(),
     lockWeek: async () => setupUnavailable(),
+    pickOption: async () => setupUnavailable(),
+    lockInVote: async () => setupUnavailable(),
+    reopenVote: async () => setupUnavailable(),
+    requestNewOptions: async () => setupUnavailable(),
+    cancelNewOptions: async () => setupUnavailable(),
     unlockWeek: async () => setupUnavailable(),
     closeShoppingPrompt: async () => setupUnavailable(),
     toggleItem: async () => setupUnavailable(),
@@ -402,6 +418,10 @@ function SupabaseSupperProvider({ children }: { children: React.ReactNode }) {
       .on("postgres_changes", { event: "*", schema: "public", table: "shopping_items" }, () => void refresh())
       .on("postgres_changes", { event: "*", schema: "public", table: "ballot_requests" }, () => void refresh())
       .on("postgres_changes", { event: "*", schema: "public", table: "saved_meals" }, () => void refresh())
+      .on("postgres_changes", { event: "*", schema: "public", table: "meal_options" }, () => void refresh())
+      .on("postgres_changes", { event: "*", schema: "public", table: "meal_option_picks" }, () => void refresh())
+      .on("postgres_changes", { event: "*", schema: "public", table: "week_vote_submissions" }, () => void refresh())
+      .on("postgres_changes", { event: "*", schema: "public", table: "meal_option_requests" }, () => void refresh())
       .subscribe();
     return () => {
       cancelled = true;
@@ -676,6 +696,78 @@ function SupabaseSupperProvider({ children }: { children: React.ReactNode }) {
           if (!client || !session || !visible) throw new Error("Not signed in");
           await supabaseLockWeek(client, scopeForRole(visible, viewedRoleRef.current).week.id);
           void requestBotWake("week_locked");
+        }),
+      pickOption: (optionId) => {
+        const current = session;
+        const visible = displayRef.current;
+        const scope = visible ? scopeForRole(visible, viewedRoleRef.current) : null;
+        const option = scope?.options.find((row) => row.id === optionId);
+        if (!current?.membershipId || !option) {
+          return run(async () => {
+            throw new Error(!current ? "Not signed in" : "That option is gone.");
+          });
+        }
+        const membershipId = current.membershipId;
+        return runOptimistic(
+          `pick:${option.weekId}:${option.dayIndex}`,
+          (snap) =>
+            patchPick(snap, {
+              id: `optimistic-pick-${option.weekId}-${option.dayIndex}-${membershipId}`,
+              weekId: option.weekId,
+              dayIndex: option.dayIndex,
+              optionId,
+              membershipId,
+              updatedAt: new Date().toISOString(),
+            }),
+          async () => {
+            const client = createSupabaseBrowserClient();
+            if (!client) throw new Error("Not signed in");
+            await supabaseSetMealPick(client, optionId);
+          },
+        );
+      },
+      lockInVote: () =>
+        run(async () => {
+          const client = createSupabaseBrowserClient();
+          const visible = displayRef.current;
+          if (!client || !session || !visible) throw new Error("Not signed in");
+          const result = await supabaseSubmitWeekVote(
+            client,
+            scopeForRole(visible, viewedRoleRef.current).week.id,
+          );
+          await refresh();
+          if (result.finalized) void requestBotWake("week_locked");
+        }),
+      reopenVote: (memberId) =>
+        run(async () => {
+          const client = createSupabaseBrowserClient();
+          const visible = displayRef.current;
+          if (!client || !session || !visible) throw new Error("Not signed in");
+          await supabaseReopenWeekVote(
+            client,
+            scopeForRole(visible, viewedRoleRef.current).week.id,
+            memberId,
+          );
+        }),
+      requestNewOptions: (dayIndex, note) =>
+        run(async () => {
+          const client = createSupabaseBrowserClient();
+          const visible = displayRef.current;
+          if (!client || !session || !visible) throw new Error("Not signed in");
+          await supabaseRequestNightOptions(
+            client,
+            scopeForRole(visible, viewedRoleRef.current).week.id,
+            dayIndex,
+            note,
+          );
+        }).then(() => {
+          wakeWeekOrPlanChange();
+        }),
+      cancelNewOptions: (requestId) =>
+        run(async () => {
+          const client = createSupabaseBrowserClient();
+          if (!client || !session) throw new Error("Not signed in");
+          await supabaseCancelNightOptionsRequest(client, requestId);
         }),
       unlockWeek: () =>
         run(async () => {

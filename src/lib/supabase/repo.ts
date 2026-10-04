@@ -3,7 +3,10 @@ import type {
   HouseholdSettingsPatch,
   HouseholdSnapshot,
   Meal,
+  MealOption,
+  MealPick,
   MealProposalInput,
+  OptionRequest,
   Membership,
   PendingInvite,
   Recipe,
@@ -14,6 +17,7 @@ import type {
   Store,
   Vote,
   VoteChoice,
+  VoteSubmission,
   Week,
   WeekScope,
 } from "@/lib/types";
@@ -108,6 +112,8 @@ function mapWeekRow(weekRow: Record<string, unknown>): Week {
       typeof weekRow.people_confirmed_at === "string" ? weekRow.people_confirmed_at : null,
     nightHeadcounts: mapWeekPlates(weekRow.night_headcounts),
     specialInstructions: mapSpecialInstructions(weekRow.special_instructions),
+    ballotMode: weekRow.ballot_mode === "choice3" ? "choice3" : "single",
+    finalizedAt: typeof weekRow.finalized_at === "string" ? weekRow.finalized_at : null,
   };
 }
 
@@ -201,6 +207,10 @@ export async function fetchSupabaseSnapshot(
     ballotRequestRes,
     historyRes,
     savedMealsRes,
+    optionsRes,
+    picksRes,
+    submissionsRes,
+    optionRequestsRes,
   ] = await Promise.all([
     client.from("households").select("*").eq("id", householdId).single(),
     client.from("memberships").select("*").eq("household_id", householdId),
@@ -237,6 +247,14 @@ export async function fetchSupabaseSnapshot(
       .select("*")
       .eq("household_id", householdId)
       .order("saved_at", { ascending: false }),
+    client.from("meal_options").select("*").eq("household_id", householdId),
+    client.from("meal_option_picks").select("*").eq("household_id", householdId),
+    client.from("week_vote_submissions").select("*").eq("household_id", householdId),
+    client
+      .from("meal_option_requests")
+      .select("*")
+      .eq("household_id", householdId)
+      .eq("status", "pending"),
   ]);
 
   const householdRow = required(householdRes.data, householdRes.error, "Household not found");
@@ -292,6 +310,50 @@ export async function fetchSupabaseSnapshot(
     estimatedCostCents: row.estimated_cost_cents,
     estimatedCostSource: row.estimated_cost_source,
     estimatedCostAsOf: row.estimated_cost_as_of,
+    sourceOptionId: row.source_option_id ?? null,
+  }));
+
+  if (optionsRes.error) throw new Error(optionsRes.error.message);
+  if (picksRes.error) throw new Error(picksRes.error.message);
+  if (submissionsRes.error) throw new Error(submissionsRes.error.message);
+  if (optionRequestsRes.error) throw new Error(optionRequestsRes.error.message);
+
+  const allOptions: MealOption[] = (optionsRes.data ?? []).map((row) => ({
+    id: String(row.id),
+    householdId: String(row.household_id),
+    weekId: String(row.week_id),
+    dayIndex: Number(row.day_index),
+    nightDate: String(row.night_date).slice(0, 10),
+    rank: Number(row.rank),
+    title: String(row.title),
+    pitch: String(row.pitch ?? ""),
+    servings: Number(row.servings),
+    prepMinutes: Number(row.prep_minutes),
+    recipeKey: typeof row.recipe_key === "string" && row.recipe_key.trim() ? row.recipe_key.trim() : null,
+  }));
+
+  const allPicks: MealPick[] = (picksRes.data ?? []).map((row) => ({
+    id: String(row.id),
+    weekId: String(row.week_id),
+    dayIndex: Number(row.day_index),
+    optionId: String(row.option_id),
+    membershipId: String(row.membership_id),
+    updatedAt: String(row.updated_at ?? ""),
+  }));
+
+  const allSubmissions: VoteSubmission[] = (submissionsRes.data ?? []).map((row) => ({
+    weekId: String(row.week_id),
+    membershipId: String(row.membership_id),
+    submittedAt: String(row.submitted_at ?? ""),
+  }));
+
+  const allOptionRequests: OptionRequest[] = (optionRequestsRes.data ?? []).map((row) => ({
+    id: String(row.id),
+    weekId: String(row.week_id),
+    dayIndex: Number(row.day_index),
+    requestedBy: row.requested_by ? String(row.requested_by) : null,
+    note: String(row.note ?? ""),
+    status: "pending",
   }));
 
   const allRecipes: Recipe[] = (recipesRes.data ?? []).map((row) => ({
@@ -343,12 +405,19 @@ export async function fetchSupabaseSnapshot(
       recipes: allRecipes.filter((recipe) => mealIds.has(recipe.mealId)),
       shoppingList: listRow ? mapShoppingList(listRow, shoppingItemRows) : null,
       ballotRequest: mapBallotRequest(ballotRow, ballotRequestRes.error, week.id),
+      options: allOptions
+        .filter((option) => option.weekId === week.id)
+        .sort((a, b) => a.dayIndex - b.dayIndex || a.rank - b.rank),
+      picks: allPicks.filter((pick) => pick.weekId === week.id),
+      submissions: allSubmissions.filter((row) => row.weekId === week.id),
+      optionRequests: allOptionRequests.filter((row) => row.weekId === week.id),
     };
   };
 
   const cooking = scopeForRow(cookingRow);
   const planning = openWeeks.planning ? scopeForRow(openWeeks.planning.row) : null;
-  const { week, meals, votes, recipes, shoppingList } = cooking;
+  const { week, meals, votes, recipes, shoppingList, options, picks, submissions, optionRequests } =
+    cooking;
 
   const snapshot: HouseholdSnapshot = {
     household: {
@@ -418,6 +487,10 @@ export async function fetchSupabaseSnapshot(
     ),
     joinToken: joinTokenRes.error ? null : (joinTokenRes.data?.token ?? null),
     ballotRequest: cooking.ballotRequest,
+    options,
+    picks,
+    submissions,
+    optionRequests,
     mealHistory: parseMealHistory(historyRes.error ? null : historyRes.data),
     savedMeals: parseSavedMeals(savedMealsRes.error ? null : savedMealsRes.data),
   };
@@ -531,6 +604,54 @@ export async function supabaseProposeReplacement(
 
 export async function supabaseLockWeek(client: SupabaseClient, weekId: string) {
   const { error } = await client.rpc("lock_week", { target_week: weekId });
+  if (error) throw new Error(error.message);
+}
+
+export async function supabaseSetMealPick(client: SupabaseClient, optionId: string) {
+  const { error } = await client.rpc("set_meal_pick", { target_option: optionId });
+  if (error) throw new Error(error.message);
+}
+
+export async function supabaseSubmitWeekVote(
+  client: SupabaseClient,
+  weekId: string,
+): Promise<{ submitted: boolean; finalized: boolean }> {
+  const { data, error } = await client.rpc("submit_week_vote", { target_week: weekId });
+  if (error) throw new Error(error.message);
+  const body = (data ?? {}) as { submitted?: boolean; finalized?: boolean };
+  return { submitted: body.submitted !== false, finalized: body.finalized === true };
+}
+
+export async function supabaseReopenWeekVote(
+  client: SupabaseClient,
+  weekId: string,
+  memberId?: string | null,
+) {
+  const { error } = await client.rpc("reopen_week_vote", {
+    target_week: weekId,
+    target_member: memberId ?? null,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function supabaseRequestNightOptions(
+  client: SupabaseClient,
+  weekId: string,
+  dayIndex: number,
+  note: string,
+) {
+  const { error } = await client.rpc("request_night_options", {
+    target_week: weekId,
+    target_day: dayIndex,
+    note,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function supabaseCancelNightOptionsRequest(client: SupabaseClient, requestId: string) {
+  const { error } = await client.rpc("cancel_night_options_request", {
+    target_request: requestId,
+  });
   if (error) throw new Error(error.message);
 }
 
@@ -988,7 +1109,7 @@ export async function supabaseBotCheckStatus(client: SupabaseClient): Promise<Bo
 
   const { data: weekData, error: weekError } = await client
     .from("weeks")
-    .select("id, status, starts_on")
+    .select("id, status, starts_on, ballot_mode, finalized_at, night_headcounts, editable_from")
     .eq("household_id", householdId)
     .order("starts_on", { ascending: false })
     .limit(8);
@@ -1002,6 +1123,10 @@ export async function supabaseBotCheckStatus(client: SupabaseClient): Promise<Bo
         id: String(row.id),
         status: asWeekStatus(row.status) ?? "voting",
         startsOn: typeof row.starts_on === "string" ? row.starts_on.slice(0, 10) : null,
+        ballotMode: row.ballot_mode === "choice3" ? ("choice3" as const) : ("single" as const),
+        finalizedAt: typeof row.finalized_at === "string" ? row.finalized_at : null,
+        nightHeadcounts: mapWeekPlates(row.night_headcounts),
+        editableFrom: parseEditableFrom(row.editable_from),
       }];
     }),
     today,
@@ -1126,6 +1251,62 @@ export async function supabaseBotCheckStatus(client: SupabaseClient): Promise<Bo
       });
     }
 
+    const options: MealOption[] = [];
+    let optionRequests: OptionRequest[] = [];
+    const choiceOpen =
+      openWeek.ballotMode === "choice3" &&
+      openWeek.status === "voting" &&
+      !openWeek.finalizedAt &&
+      ballot != null &&
+      ballot.status !== "pending";
+    if (choiceOpen) {
+      const [optionsRes, requestsRes] = await Promise.all([
+        client
+          .from("meal_options")
+          .select("day_index")
+          .eq("household_id", householdId)
+          .eq("week_id", openWeek.id),
+        client
+          .from("meal_option_requests")
+          .select("day_index, note")
+          .eq("household_id", householdId)
+          .eq("week_id", openWeek.id)
+          .eq("status", "pending"),
+      ]);
+      if (optionsRes.error) throw new Error(optionsRes.error.message);
+      if (requestsRes.error) throw new Error(requestsRes.error.message);
+      const counts = new Map<number, number>();
+      for (const row of rowsOf(optionsRes.data)) {
+        const day = Number(row.day_index);
+        counts.set(day, (counts.get(day) ?? 0) + 1);
+      }
+      for (const [day, count] of counts) {
+        for (let rank = 1; rank <= count; rank += 1) {
+          options.push({
+            id: `${openWeek.id}-${day}-${rank}`,
+            householdId,
+            weekId: openWeek.id,
+            dayIndex: day,
+            nightDate: openWeek.startsOn ?? "",
+            rank,
+            title: "option",
+            pitch: "",
+            servings: 1,
+            prepMinutes: 30,
+            recipeKey: null,
+          });
+        }
+      }
+      optionRequests = rowsOf(requestsRes.data).map((row) => ({
+        id: `${openWeek.id}-req-${String(row.day_index)}`,
+        weekId: openWeek.id,
+        dayIndex: Number(row.day_index),
+        requestedBy: null,
+        note: String(row.note ?? ""),
+        status: "pending" as const,
+      }));
+    }
+
     let recipes: Recipe[] = [];
     let shoppingList: { items: readonly unknown[] } | null = null;
     if (openWeek.status === "locked" && meals.length) {
@@ -1146,9 +1327,19 @@ export async function supabaseBotCheckStatus(client: SupabaseClient): Promise<Bo
         votes,
         memberships: members,
         ballotRequest: ballot,
-        week: { status: openWeek.status },
+        week: {
+          id: openWeek.id,
+          status: openWeek.status,
+          startsOn: openWeek.startsOn,
+          ballotMode: openWeek.ballotMode,
+          finalizedAt: openWeek.finalizedAt,
+          nightHeadcounts: openWeek.nightHeadcounts,
+          editableFrom: openWeek.editableFrom,
+        },
         recipes,
         shoppingList,
+        options,
+        optionRequests,
       }),
     );
   }

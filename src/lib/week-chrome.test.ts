@@ -41,6 +41,7 @@ function meal(id: string, nightDate: string, title: string): Meal {
     estimatedCostCents: null,
     estimatedCostSource: null,
     estimatedCostAsOf: null,
+    sourceOptionId: null,
   };
 }
 

@@ -166,6 +166,7 @@ export function grokBotPastePrompt(input: {
     "Keep a webhook routine named Wake on app event. On wake, sync this household (ballot, recipes, shopping list, setup) from the app, and stay quiet if nothing changed.",
     "For a next-week ballot, use that week's night_headcounts and special_instructions. Empty instructions are fine. Do not change House plate defaults.",
     "Never invent grocery prices. Never claim Smith's cart adds.",
+    "On a choice3 week, pending_ballot or options_pending means write exactly 3 distinct options per listed night with submit_week_options (servings = that night's plates); never write meals directly on a choice3 week.",
   ].join(" ");
 }
 

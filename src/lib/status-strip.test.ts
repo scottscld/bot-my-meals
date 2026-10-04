@@ -131,9 +131,12 @@ describe("status strip mid-vote wiring", () => {
     expect(week).not.toContain("weekStatusStripState");
     expect(week).not.toContain("weekVoterProgress");
     expect(week).not.toContain("Your vote needed");
+    expect(week).toContain("choice && !showPeopleGate ? (");
+    expect(week).toContain("<LockInBar />");
     expect(week).toContain(
-      "footer={!viewingPast && !locked && check.ready && !showPeopleGate ? <LockBar /> : undefined}",
+      "!choice && !viewingPast && !locked && check.ready && !showPeopleGate ? (",
     );
+    expect(week).toContain("<LockBar />");
   });
 });
 

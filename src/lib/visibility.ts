@@ -18,6 +18,10 @@ export function redactUntilLocked(snapshot: HouseholdSnapshot): HouseholdSnapsho
     recipes: snapshot.recipes,
     shoppingList: snapshot.shoppingList,
     ballotRequest: snapshot.ballotRequest ?? null,
+    options: snapshot.options,
+    picks: snapshot.picks,
+    submissions: snapshot.submissions,
+    optionRequests: snapshot.optionRequests,
   });
   const planning = snapshot.planning ? redactScope(snapshot.planning) : snapshot.planning;
   return {
@@ -28,6 +32,10 @@ export function redactUntilLocked(snapshot: HouseholdSnapshot): HouseholdSnapsho
     recipes: cooking.recipes,
     shoppingList: cooking.shoppingList,
     ballotRequest: cooking.ballotRequest,
+    options: cooking.options,
+    picks: cooking.picks,
+    submissions: cooking.submissions,
+    optionRequests: cooking.optionRequests,
     planning,
   };
 }

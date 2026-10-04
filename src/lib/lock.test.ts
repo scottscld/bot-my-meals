@@ -50,6 +50,7 @@ const meals: Meal[] = [0, 1, 2, 3, 4, 5, 6].map((dayIndex) => ({
   estimatedCostCents: null,
   estimatedCostSource: null,
   estimatedCostAsOf: null,
+  sourceOptionId: null,
 }));
 
 function vote(

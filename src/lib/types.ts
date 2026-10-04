@@ -132,6 +132,46 @@ export type Meal = {
   estimatedCostCents: number | null;
   estimatedCostSource: string | null;
   estimatedCostAsOf: string | null;
+  /** Option that won this night on a choice3 week. Null on the old single-dinner flow. */
+  sourceOptionId: string | null;
+};
+
+export type MealOption = {
+  id: string;
+  householdId: string;
+  weekId: string;
+  dayIndex: number;
+  nightDate: string;
+  rank: number;
+  title: string;
+  pitch: string;
+  servings: number;
+  prepMinutes: number;
+  recipeKey: string | null;
+};
+
+export type MealPick = {
+  id: string;
+  weekId: string;
+  dayIndex: number;
+  optionId: string;
+  membershipId: string;
+  updatedAt: string;
+};
+
+export type VoteSubmission = {
+  weekId: string;
+  membershipId: string;
+  submittedAt: string;
+};
+
+export type OptionRequest = {
+  id: string;
+  weekId: string;
+  dayIndex: number;
+  requestedBy: string | null;
+  note: string;
+  status: "pending" | "fulfilled" | "cancelled";
 };
 
 export type Vote = {
@@ -159,6 +199,10 @@ export type Week = {
   nightHeadcounts: number[] | null;
   /** Optional bot note for this week. */
   specialInstructions: string | null;
+  /** single keeps Swap/Remove. choice3 is 3 options and Lock in my vote. */
+  ballotMode: "single" | "choice3";
+  /** Set when choice3 winners are written. Null while voting is still open. */
+  finalizedAt: string | null;
 };
 
 /** Title-only dinner kept after a week finishes. No recipe payload. */
@@ -263,6 +307,10 @@ export type WeekScope = {
   recipes: Recipe[];
   shoppingList: ShoppingList | null;
   ballotRequest: BallotRequest | null;
+  options: MealOption[];
+  picks: MealPick[];
+  submissions: VoteSubmission[];
+  optionRequests: OptionRequest[];
 };
 
 export type HouseholdSnapshot = {
@@ -278,6 +326,10 @@ export type HouseholdSnapshot = {
   pendingInvites?: PendingInvite[];
   joinToken?: string | null;
   ballotRequest?: BallotRequest | null;
+  options: MealOption[];
+  picks: MealPick[];
+  submissions: VoteSubmission[];
+  optionRequests: OptionRequest[];
   /** The single next week, when that row exists. Absent means only cooking is open. */
   planning?: WeekScope | null;
   mealHistory: MealHistoryWeek[];

@@ -29,6 +29,7 @@ const meal = (id: string): Meal => ({
   estimatedCostCents: null,
   estimatedCostSource: null,
   estimatedCostAsOf: null,
+  sourceOptionId: null,
 });
 
 describe("shopping merge", () => {

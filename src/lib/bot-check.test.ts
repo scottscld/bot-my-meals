@@ -50,6 +50,7 @@ function status(overrides: {
   nightHeadcounts?: number[];
   meals?: BotWorkMeal[];
   fillPending?: boolean;
+  optionNightsNeeded?: number;
 } = {}): BotCheckStatus {
   return deriveBotCheckStatus({
     mode: "adaptive",
@@ -163,6 +164,7 @@ describe("bot status needs_work reasons", () => {
   it("names the stable reasons", () => {
     expect(BOT_WORK_REASONS).toEqual([
       "pending_ballot",
+      "options_pending",
       "meal_pending",
       "plate_or_people_change",
       "portion_pending",
@@ -235,6 +237,13 @@ describe("bot status needs_work reasons", () => {
     expect(waitingHtml).toContain("Check now");
     expect(status({ fillPending: true, setupComplete: false }).reason).toBe("fill_pending");
     expect(status({ fillPending: true, ballotStatus: "pending" }).reason).toBe("pending_ballot");
+    expect(status({ ballotStatus: "pending", optionNightsNeeded: 3 }).reason).toBe("pending_ballot");
+    expect(
+      status({
+        optionNightsNeeded: 1,
+        meals: [{ lifecycle: "swapped", servings: 4, expectedServings: 4 }],
+      }).reason,
+    ).toBe("options_pending");
     expect(
       status({
         fillPending: true,
@@ -303,6 +312,76 @@ describe("bot status needs_work reasons", () => {
         shoppingList: null,
       }),
     ).toMatchObject({ needs_work: false, reason: "idle" });
+
+    const choiceWeek = {
+      id: "week-choice",
+      status: "voting" as const,
+      startsOn: "2026-10-04",
+      ballotMode: "choice3" as const,
+      finalizedAt: null,
+      nightHeadcounts: PLATES,
+      editableFrom: null,
+    };
+    const option = (dayIndex: number, rank: number) => ({
+      id: `o-${dayIndex}-${rank}`,
+      householdId: "house",
+      weekId: "week-choice",
+      dayIndex,
+      nightDate: "2026-10-04",
+      rank,
+      title: `Dish ${dayIndex}-${rank}`,
+      pitch: "",
+      servings: 4,
+      prepMinutes: 30,
+      recipeKey: null,
+    });
+    const three = (dayIndex: number) => [1, 2, 3].map((rank) => option(dayIndex, rank));
+    expect(
+      botCheckForSnapshot({
+        ...base,
+        meals: [],
+        ballotRequest: { status: "fulfilled", householdSize: 4, nightHeadcounts: PLATES },
+        week: choiceWeek,
+        options: [...three(0), ...three(1), ...three(2), ...three(3)],
+        optionRequests: [
+          {
+            id: "req-4",
+            weekId: "week-choice",
+            dayIndex: 4,
+            requestedBy: "mem",
+            note: "Too heavy, want tacos",
+            status: "pending",
+          },
+        ],
+      }),
+    ).toMatchObject({
+      needs_work: true,
+      reason: "options_pending",
+      work: {
+        week_id: "week-choice",
+        starts_on: "2026-10-04",
+        ballot_mode: "choice3",
+        nights: [
+          {
+            day_index: 4,
+            night_date: "2026-10-08",
+            plates: 4,
+            need: "new_options",
+            note: "Too heavy, want tacos",
+          },
+        ],
+      },
+    });
+    expect(
+      botCheckForSnapshot({
+        ...base,
+        meals: [],
+        ballotRequest: { status: "pending", householdSize: 4, nightHeadcounts: PLATES },
+        week: choiceWeek,
+        options: [],
+        optionRequests: [],
+      }).work?.nights?.map((night) => night.need),
+    ).toEqual(["options", "options", "options", "options", "options"]);
     expect(
       botCheckForSnapshot({
         ...base,
@@ -504,6 +583,8 @@ describe("bot check migration and shared-bot docs", () => {
     expect(docs).toMatch(/\/api\/bot\/status/);
     expect(docs).toMatch(/needs_work/);
     expect(docs).toMatch(/fill_pending/);
+    expect(docs).toMatch(/options_pending/);
+    expect(docs).toMatch(/submit_week_options/);
     expect(docs).toMatch(/stay silent/i);
     expect(docs).toMatch(/Never invent grocery prices/);
     expect(docs).not.toMatch(/Force sync/);
@@ -563,7 +644,9 @@ function statusClient(input: {
   user?: { id: string } | null;
   membership?: { household_id: string } | null;
   household?: Record<string, unknown> | null;
-  week?: { id: string; status?: string } | null;
+  week?: { id: string; status?: string; starts_on?: string; ballot_mode?: string } | null;
+  mealOptions?: Array<Record<string, unknown>>;
+  optionRequests?: Array<Record<string, unknown>>;
   ballot?: Record<string, unknown> | null;
   meals?: Array<Record<string, unknown>>;
   recipes?: Array<Record<string, unknown>>;
@@ -612,10 +695,21 @@ function statusClient(input: {
           (columns) => input.selects.push(`households:${columns}`),
         );
       }
-      if (table === "weeks") return query({ data: input.week === undefined ? { id: "week-1" } : input.week, error: null });
+      if (table === "weeks") {
+        return query(
+          { data: input.week === undefined ? { id: "week-1" } : input.week, error: null },
+          record(table),
+        );
+      }
       if (table === "ballot_requests") return query({ data: input.ballot ?? null, error: null });
       if (table === "meals") return query({ data: input.meals ?? [], error: null });
       if (table === "votes") return query({ data: [], error: null });
+      if (table === "meal_options") {
+        return query({ data: input.mealOptions ?? [], error: null }, record(table));
+      }
+      if (table === "meal_option_requests") {
+        return query({ data: input.optionRequests ?? [], error: null }, record(table));
+      }
       throw new Error(`unexpected table ${table}`);
     },
   } as unknown as SupabaseClient;
@@ -785,5 +879,42 @@ describe("supabaseBotCheckStatus", () => {
       ok: true,
       body: { needs_work: false, reason: "idle" },
     });
+  });
+
+  it("lists choice3 option gaps with narrow selects and skips those tables on a single week", async () => {
+    const selects: string[] = [];
+    const body = await supabaseBotCheckStatus(
+      statusClient({
+        selects,
+        week: {
+          id: "week-1",
+          status: "voting",
+          starts_on: "2026-10-04",
+          ballot_mode: "choice3",
+        },
+        ballot: { status: "fulfilled", household_size: 4, night_headcounts: PLATES },
+        mealOptions: [{ day_index: 0 }, { day_index: 0 }, { day_index: 0 }],
+        optionRequests: [{ day_index: 1, note: "Want tacos" }],
+      }),
+    );
+    expect(body).toMatchObject({
+      ok: true,
+      body: {
+        needs_work: true,
+        reason: "options_pending",
+        work: { ballot_mode: "choice3", week_id: "week-1" },
+      },
+    });
+    expect(selects).toContain(
+      "weeks:id, status, starts_on, ballot_mode, finalized_at, night_headcounts, editable_from",
+    );
+    expect(selects).toContain("meal_options:day_index");
+    expect(selects).toContain("meal_option_requests:day_index, note");
+    expect(selects.some((columns) => columns.includes("*"))).toBe(false);
+
+    const singleSelects: string[] = [];
+    await supabaseBotCheckStatus(statusClient({ selects: singleSelects }));
+    expect(singleSelects.some((columns) => columns.startsWith("meal_options:"))).toBe(false);
+    expect(singleSelects.some((columns) => columns.startsWith("meal_option_requests:"))).toBe(false);
   });
 });

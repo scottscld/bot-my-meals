@@ -6,6 +6,7 @@ export const LOCK_SUCCESS_RECIPES_KICKER = "First meal";
 export const LOCKED_CHIP_LABEL = "Locked";
 export const UNLOCK_WEEK_LABEL = "Unlock week";
 export const UNLOCK_WEEK_CONFIRM = "Unlock so you can edit what’s left?";
+export const UNLOCK_WEEK_CHOICE_CONFIRM = "Unlock and reopen voting? Everyone locks in again.";
 export const DONE_SHOPPING_LABEL = "Done shopping";
 export const DISMISS_SHOPPING_LABEL = "Dismiss";
 

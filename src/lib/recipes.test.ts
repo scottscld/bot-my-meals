@@ -24,6 +24,7 @@ function meal(dayIndex: number, title: string): Meal {
     estimatedCostCents: null,
     estimatedCostSource: null,
     estimatedCostAsOf: null,
+    sourceOptionId: null,
   };
 }
 

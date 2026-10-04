@@ -71,9 +71,12 @@ describe("Clear Sky lock-success craft", () => {
       "utf8",
     );
 
+    expect(week).toContain("choice && !showPeopleGate ? (");
+    expect(week).toContain("<LockInBar />");
     expect(week).toContain(
-      "footer={!viewingPast && !locked && check.ready && !showPeopleGate ? <LockBar /> : undefined}",
+      "!choice && !viewingPast && !locked && check.ready && !showPeopleGate ? (",
     );
+    expect(week).toContain("<LockBar />");
     expect(week).toContain("<WeekChrome");
     expect(week).toContain("<UnlockWeekControl");
     expect(lockBar).toContain('data-slot="lock-bar"');

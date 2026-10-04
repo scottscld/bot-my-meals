@@ -66,6 +66,10 @@ export function cookingScope(snapshot: HouseholdSnapshot): WeekScope {
     recipes: snapshot.recipes,
     shoppingList: snapshot.shoppingList,
     ballotRequest: snapshot.ballotRequest ?? null,
+    options: snapshot.options,
+    picks: snapshot.picks,
+    submissions: snapshot.submissions,
+    optionRequests: snapshot.optionRequests,
   };
 }
 

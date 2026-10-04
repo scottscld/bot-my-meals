@@ -9,6 +9,7 @@ import {
   patchItemChecked,
   patchMealProposal,
   patchMemberRole,
+  patchPick,
   patchStoreAdded,
   patchStoreRemoved,
   patchVote,
@@ -37,6 +38,7 @@ function snapshot(): HouseholdSnapshot {
     estimatedCostCents: null,
     estimatedCostSource: null,
     estimatedCostAsOf: null,
+    sourceOptionId: null,
   };
   const item: ShoppingItem = {
     id: "item-1",
@@ -151,5 +153,47 @@ describe("optimistic snapshot patches", () => {
     expect(applyOptimistic(true, pending)).toBe(false);
     pending = dropOptimistic(pending, 2);
     expect(applyOptimistic(true, pending)).toBe(true);
+  });
+
+  it("replaces the caller's pick for that night only", () => {
+    const base = snapshot();
+    const first = patchPick(base, {
+      id: "pick-1",
+      weekId: base.week.id,
+      dayIndex: 0,
+      optionId: "opt-a",
+      membershipId: "mem-1",
+      updatedAt: "2026-10-04T00:00:00.000Z",
+    });
+    const otherNight = patchPick(first, {
+      id: "pick-2",
+      weekId: base.week.id,
+      dayIndex: 1,
+      optionId: "opt-b",
+      membershipId: "mem-1",
+      updatedAt: "2026-10-04T00:00:00.000Z",
+    });
+    const otherPerson = patchPick(otherNight, {
+      id: "pick-3",
+      weekId: base.week.id,
+      dayIndex: 0,
+      optionId: "opt-c",
+      membershipId: "mem-2",
+      updatedAt: "2026-10-04T00:00:00.000Z",
+    });
+    const moved = patchPick(otherPerson, {
+      id: "pick-4",
+      weekId: base.week.id,
+      dayIndex: 0,
+      optionId: "opt-d",
+      membershipId: "mem-1",
+      updatedAt: "2026-10-04T01:00:00.000Z",
+    });
+    expect(moved.picks).toEqual([
+      expect.objectContaining({ dayIndex: 0, optionId: "opt-d", membershipId: "mem-1" }),
+      expect.objectContaining({ dayIndex: 1, optionId: "opt-b", membershipId: "mem-1" }),
+      expect.objectContaining({ dayIndex: 0, optionId: "opt-c", membershipId: "mem-2" }),
+    ]);
+    expect(moved.picks.filter((pick) => pick.membershipId === "mem-1" && pick.dayIndex === 0)).toHaveLength(1);
   });
 });

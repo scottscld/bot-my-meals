@@ -1,3 +1,4 @@
+import { choiceNights } from "./choice-ballot";
 import { headcountForNight, normalizeNightHeadcounts } from "./headcount";
 import { clampHouseholdSize, isHouseSetupComplete, parseBallotRequestStatus } from "./house-setup";
 import { nightLifecycle } from "./lock";
@@ -11,7 +12,9 @@ import type {
   Household,
   HouseholdSnapshot,
   Meal,
+  MealOption,
   Membership,
+  OptionRequest,
   NightLifecycle,
   Recipe,
   Vote,
@@ -62,6 +65,7 @@ export const BOT_CHECK_OPTIONS: ReadonlyArray<{
 /** Stable reasons for GET /api/bot/status. First match wins. */
 export const BOT_WORK_REASONS = [
   "pending_ballot",
+  "options_pending",
   "meal_pending",
   "plate_or_people_change",
   "portion_pending",
@@ -73,6 +77,21 @@ export type BotWorkReason = (typeof BOT_WORK_REASONS)[number];
 
 export type BotCheckPhase = "active" | "idle";
 
+export type BotWorkNight = {
+  day_index: number;
+  night_date: string;
+  plates: number;
+  need: "options" | "new_options";
+  note?: string;
+};
+
+export type BotWork = {
+  week_id: string;
+  starts_on: string | null;
+  ballot_mode: "single" | "choice3";
+  nights?: BotWorkNight[];
+};
+
 export type BotCheckStatus = {
   needs_work: boolean;
   reason: BotWorkReason;
@@ -81,6 +100,8 @@ export type BotCheckStatus = {
     interval_hours: BotCheckIntervalHours;
     phase: BotCheckPhase;
   };
+  /** Present only when this week needs work and the week id is known. */
+  work?: BotWork;
 };
 
 export type BotWorkMeal = {
@@ -225,6 +246,8 @@ export function botWorkReason(input: {
   meals: BotWorkMeal[];
   /** Locked week still missing recipes and/or a shopping list. */
   fillPending?: boolean;
+  /** Choice3 nights still missing 3 options or waiting on a new set. */
+  optionNightsNeeded?: number;
 }): BotWorkReason {
   const portionGap = input.meals.some(dinnerNeedsPortions);
   const ballotWritten = input.ballotStatus === "fulfilled" || input.ballotStatus === "cancelled";
@@ -234,6 +257,7 @@ export function botWorkReason(input: {
   const plateDrift = ballotWritten && (sizeDrift || !sameHeadcounts(input.ballotNightHeadcounts, input.nightHeadcounts));
 
   if (input.ballotStatus === "pending") return "pending_ballot";
+  if ((input.optionNightsNeeded ?? 0) > 0) return "options_pending";
   if (
     input.meals.some(
       (meal) =>
@@ -254,6 +278,7 @@ export function botWorkReason(input: {
 export function botWorkNeedsAction(reason: BotWorkReason): boolean {
   switch (reason) {
     case "pending_ballot":
+    case "options_pending":
     case "meal_pending":
     case "plate_or_people_change":
     case "portion_pending":
@@ -274,6 +299,7 @@ export function botCheckPhase(reason: BotWorkReason): BotCheckPhase {
     case "idle":
       return "idle";
     case "pending_ballot":
+    case "options_pending":
     case "meal_pending":
     case "plate_or_people_change":
     case "portion_pending":
@@ -315,6 +341,7 @@ export function deriveBotCheckStatus(input: {
   nightHeadcounts: number[];
   meals: BotWorkMeal[];
   fillPending?: boolean;
+  optionNightsNeeded?: number;
 }): BotCheckStatus {
   const setting = normalizeBotCheckSetting(input.mode, input.intervalHours);
   const reason = botWorkReason({
@@ -326,6 +353,7 @@ export function deriveBotCheckStatus(input: {
     nightHeadcounts: input.nightHeadcounts,
     meals: input.meals,
     fillPending: input.fillPending,
+    optionNightsNeeded: input.optionNightsNeeded,
   });
   const phase = botCheckPhase(reason);
   return {
@@ -406,6 +434,8 @@ export function botCheckForHousehold(
     | "recipes"
     | "shoppingList"
     | "planning"
+    | "options"
+    | "optionRequests"
   >,
 ): BotCheckStatus {
   const cooking = botCheckForSnapshot(snapshot);
@@ -419,6 +449,8 @@ export function botCheckForHousehold(
     week: snapshot.planning.week,
     recipes: snapshot.planning.recipes,
     shoppingList: snapshot.planning.shoppingList,
+    options: snapshot.planning.options,
+    optionRequests: snapshot.planning.optionRequests,
   });
   return preferBotCheckStatus([cooking, planning]);
 }
@@ -447,19 +479,94 @@ function mealFacts(
   }));
 }
 
+type ChoiceWeek = Pick<Week, "status"> & {
+  id?: string;
+  startsOn?: string | null;
+  ballotMode?: Week["ballotMode"];
+  finalizedAt?: string | null;
+  nightHeadcounts?: number[] | null;
+  editableFrom?: string | null;
+};
+
+function choiceWeekOpen(week: ChoiceWeek | undefined, ballotStatus: BallotRequest["status"] | null): boolean {
+  return (
+    week?.ballotMode === "choice3" &&
+    week.status === "voting" &&
+    !week.finalizedAt &&
+    ballotStatus != null &&
+    ballotStatus !== "pending"
+  );
+}
+
+function choiceWorkNights(
+  snapshot: {
+    household: BotCheckHousehold;
+    week: ChoiceWeek;
+    options?: readonly MealOption[];
+    optionRequests?: readonly OptionRequest[];
+  },
+  reason: BotWorkReason,
+): BotWorkNight[] | undefined {
+  if (snapshot.week.ballotMode !== "choice3" || !snapshot.week.startsOn) return undefined;
+  const nights = choiceNights({
+    week: {
+      startsOn: snapshot.week.startsOn,
+      editableFrom: snapshot.week.editableFrom ?? null,
+      nightHeadcounts: snapshot.week.nightHeadcounts ?? null,
+    },
+    household: snapshot.household,
+    options: snapshot.options ?? [],
+    optionRequests: snapshot.optionRequests ?? [],
+  });
+  if (reason === "pending_ballot") {
+    return nights.map((night) => ({
+      day_index: night.dayIndex,
+      night_date: night.nightDate,
+      plates: night.plates,
+      need: "options" as const,
+    }));
+  }
+  if (reason === "options_pending") {
+    return nights.flatMap((night): BotWorkNight[] => {
+      if (night.pendingRequest) {
+        return [{
+          day_index: night.dayIndex,
+          night_date: night.nightDate,
+          plates: night.plates,
+          need: "new_options" as const,
+          note: night.pendingRequest.note,
+        }];
+      }
+      if (night.options.length !== 3) {
+        return [{
+          day_index: night.dayIndex,
+          night_date: night.nightDate,
+          plates: night.plates,
+          need: "options" as const,
+        }];
+      }
+      return [];
+    });
+  }
+  return undefined;
+}
+
 export function botCheckForSnapshot(snapshot: {
   household: BotCheckHousehold;
   meals: BotCheckMeal[];
   votes: Vote[];
   memberships: Membership[];
   ballotRequest?: Pick<BallotRequest, "status" | "householdSize" | "nightHeadcounts"> | null;
-  week?: Pick<Week, "status"> & { nightHeadcounts?: number[] | null };
+  week?: ChoiceWeek;
   recipes?: Recipe[];
   shoppingList?: { items: readonly unknown[] } | null;
+  options?: readonly MealOption[];
+  optionRequests?: readonly OptionRequest[];
 }): BotCheckStatus {
   const household = snapshot.household;
   const weekPlates = savedWeekPlates(snapshot.week);
   const ballot = snapshot.ballotRequest ?? null;
+  const ballotStatus = ballot ? parseBallotRequestStatus(ballot.status) : null;
   const fillPending = snapshot.week
     ? isPendingBotFill({
         weekStatus: snapshot.week.status,
@@ -470,16 +577,51 @@ export function botCheckForSnapshot(snapshot: {
         shoppingList: snapshot.shoppingList ?? null,
       })
     : false;
-  return deriveBotCheckStatus({
+  const nights = snapshot.week
+    ? choiceNights({
+        week: {
+          startsOn: snapshot.week.startsOn ?? "",
+          editableFrom: snapshot.week.editableFrom ?? null,
+          nightHeadcounts: snapshot.week.nightHeadcounts ?? null,
+        },
+        household,
+        options: snapshot.options ?? [],
+        optionRequests: snapshot.optionRequests ?? [],
+      })
+    : [];
+  const optionNightsNeeded = choiceWeekOpen(snapshot.week, ballotStatus)
+    ? nights.filter((night) => night.pendingRequest || night.options.length !== 3).length
+    : 0;
+  const status = deriveBotCheckStatus({
     mode: household.botCheckMode,
     intervalHours: household.botCheckIntervalHours,
     setupComplete: isHouseSetupComplete(household.setupStep),
-    ballotStatus: ballot ? parseBallotRequestStatus(ballot.status) : null,
+    ballotStatus,
     ballotHouseholdSize: ballot?.householdSize ?? null,
     ballotNightHeadcounts: ballot?.nightHeadcounts ?? null,
     householdSize: household.householdSize,
     nightHeadcounts: weekPlates ?? ballot?.nightHeadcounts ?? household.nightHeadcounts,
     meals: mealFacts(household, weekPlates, snapshot.meals, snapshot.votes, snapshot.memberships),
     fillPending,
+    optionNightsNeeded,
   });
+  if (!status.needs_work || !snapshot.week?.id) return status;
+  const workNights = choiceWorkNights(
+    {
+      household,
+      week: snapshot.week,
+      options: snapshot.options,
+      optionRequests: snapshot.optionRequests,
+    },
+    status.reason,
+  );
+  return {
+    ...status,
+    work: {
+      week_id: snapshot.week.id,
+      starts_on: snapshot.week.startsOn ?? null,
+      ballot_mode: snapshot.week.ballotMode ?? "single",
+      ...(workNights ? { nights: workNights } : {}),
+    },
+  };
 }

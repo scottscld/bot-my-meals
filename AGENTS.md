@@ -6,7 +6,7 @@ DIY households deploy this Worker on **their** Cloudflare account and open **the
 
 GitHub Actions is CI-only (`npm ci`, `npm test`, `npm run lint`, `npm run build:worker`). Production deploy is Cloudflare Workers Builds.
 
-Week and plan changes POST a wake (`week_locked`, `needs_work`, `check_now`) and the bot writes updates back to the site. House → Wake your Bot is required before the first Create this week's meals. There is no check-frequency control. A cooking week and one planning week can both be open; `needs_work` looks at either. See `docs/bot-routines.md`.
+Week and plan changes POST a wake (`week_locked`, `needs_work`, `check_now`) and the bot writes updates back to the site. A choice3 week uses `options_pending` and `submit_week_options` (3 options per night); the app writes the winning meals when every voter locks in. House → Wake your Bot is required before the first Create this week's meals. There is no check-frequency control. A cooking week and one planning week can both be open; `needs_work` looks at either. See `docs/bot-routines.md`.
 
 Next.js agent notes: keep the block below when `next dev` rewrites it.
 

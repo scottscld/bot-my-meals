@@ -52,6 +52,8 @@ export function applySampleWeek(snapshot: HouseholdSnapshot, now = new Date()): 
     peopleConfirmedAt: null,
     nightHeadcounts: null,
     specialInstructions: null,
+    ballotMode: "single",
+    finalizedAt: null,
   };
   const stores = snapshot.stores.length > 0 ? snapshot.stores : defaultStores(household.id);
   const storeTj =
@@ -223,6 +225,7 @@ export function applySampleWeek(snapshot: HouseholdSnapshot, now = new Date()): 
       estimatedCostCents: null,
       estimatedCostSource: null,
       estimatedCostAsOf: null,
+      sourceOptionId: null,
     };
   });
 
@@ -302,11 +305,17 @@ export function emptyHousehold(name: string, owner?: UserProfile): HouseholdSnap
       peopleConfirmedAt: null,
       nightHeadcounts: null,
       specialInstructions: null,
+      ballotMode: "single",
+      finalizedAt: null,
     },
     meals: [],
     votes: [],
     recipes: [],
     shoppingList: null,
+    options: [],
+    picks: [],
+    submissions: [],
+    optionRequests: [],
     pendingInvites: [],
     mealHistory: [],
     savedMeals: [],

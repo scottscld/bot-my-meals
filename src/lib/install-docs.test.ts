@@ -324,6 +324,11 @@ describe("Install docs — email + password + Wake on app event", () => {
     expect(paste).not.toMatch(/grandma/i);
     expect(paste).not.toMatch(/no store cart-add claims/);
 
+    expect(readme).toMatch(/3 options/);
+    expect(readme).toMatch(/Lock in my vote/);
+    expect(readme).toContain("supabase/migrations/20261003120000_three_choice_voting.sql");
+    expect(paste).toMatch(/submit_week_options/);
+    expect(paste).toMatch(/options_pending/);
     expect(readme).toMatch(/Wake on app event/);
     expect(readme).toMatch(/### 9\. Wake on app event \(required before first ballot\)/);
     expect(readme).toMatch(/### 10\. Add the other adult/);

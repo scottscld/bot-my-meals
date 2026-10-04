@@ -7,11 +7,14 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { AuthGate } from "@/components/auth-gate";
 import { BallotCard } from "@/components/ballot-card";
+import { ChoiceBallot } from "@/components/choice-ballot";
+import { ChoiceResults } from "@/components/choice-results";
 import { WaitingBotCheck } from "@/components/bot-check-frequency";
 import { BallotToast } from "@/components/ballot-toast";
 import { EmptyDayCard } from "@/components/empty-day-card";
 import { InstallPrompt } from "@/components/install-prompt";
 import { LockBar } from "@/components/lock-bar";
+import { LockInBar } from "@/components/lock-in-bar";
 import { EditNightsControl } from "@/components/edit-nights-control";
 import { LockedNightFrame, MealsWaitingCard, PostLockWaitingCard, PostLockWaitingSheet } from "@/components/post-lock-waiting";
 import { requestPendingRefresh, useBotWakeConfigured } from "@/components/use-bot-wake";
@@ -37,6 +40,7 @@ import {
   type WeekNightPresentation,
 } from "@/lib/ballot";
 import { botCheckForHousehold, botCheckForSnapshot } from "@/lib/bot-check";
+import { choiceNights, isChoiceVoting } from "@/lib/choice-ballot";
 import { FINISH_WAKE_BEFORE_CREATE } from "@/lib/bot-wake";
 import { formatMealCardDayLabel, weekdayLabelFromNight } from "@/lib/dates";
 import { PAST_WEEKS_LABEL, todayInTimeZone } from "@/lib/meal-history";
@@ -96,8 +100,19 @@ function WeekBody() {
 
 function WeekBallot() {
   const router = useRouter();
-  const { session, snapshot, setVote, requestWeekBallot, planNextWeek, savePlanningPeople, saveWeekPeople } =
-    useSupper();
+  const {
+    session,
+    snapshot,
+    setVote,
+    requestWeekBallot,
+    planNextWeek,
+    savePlanningPeople,
+    saveWeekPeople,
+    pickOption,
+    requestNewOptions,
+    cancelNewOptions,
+    reopenVote,
+  } = useSupper();
   const { role, scope, past, hasPlanning, stops, index, setViewedWeek } = useViewedWeek();
   const searchParams = useSearchParams();
   const [toast, setToast] = useState<string | undefined>();
@@ -203,6 +218,32 @@ function WeekBallot() {
   const botCheck = botCheckForHousehold(snapshot);
   const check = scope ? checkWeekLock(scope.meals, scope.votes, snapshot.memberships) : { ready: false };
   const nights = scope ? recipeNightsForWeek(scope.meals) : [];
+  const choice = Boolean(scope && isChoiceVoting(scope.week));
+  const choiceReady = Boolean(
+    choice && scope && (scope.options.length > 0 || scope.optionRequests.length > 0),
+  );
+  const showChoiceResults = Boolean(
+    scope && scope.week.ballotMode === "choice3" && scope.week.finalizedAt,
+  );
+  const activeChoiceNights =
+    scope == null
+      ? []
+      : choiceNights({
+          week: scope.week,
+          household: snapshot.household,
+          options: scope.options,
+          optionRequests: scope.optionRequests,
+        });
+  const cardNights =
+    choiceReady && scope
+      ? nights.filter((meal) =>
+          nightStaysLocked({
+            weekStatus: scope.week.status,
+            nightDate: meal.nightDate,
+            editableFrom: scope.week.editableFrom,
+          }),
+        )
+      : nights;
   const dinner = scope ? upcomingDinner(scope.meals, scope.votes, todayIso) : undefined;
   const firstMeal =
     scope && showFirstMealRow({ weekStatus: scope.week.status, pendingFill, meal: dinner }) && dinner
@@ -218,11 +259,32 @@ function WeekBallot() {
         nightDate: night.nightDate,
         hasMeal: true,
       }))
-    : nights.map((meal) => ({
-        id: meal.id,
-        nightDate: meal.nightDate,
-        hasMeal: nightHasStripMeal(meal, scope?.votes ?? [], snapshot.memberships),
-      }));
+    : choice
+      ? [
+          ...nights
+            .filter((meal) =>
+              nightStaysLocked({
+                weekStatus: scope?.week.status ?? "voting",
+                nightDate: meal.nightDate,
+                editableFrom: scope?.week.editableFrom ?? null,
+              }),
+            )
+            .map((meal) => ({
+              id: meal.id,
+              nightDate: meal.nightDate,
+              hasMeal: nightHasStripMeal(meal, scope?.votes ?? [], snapshot.memberships),
+            })),
+          ...activeChoiceNights.map((night) => ({
+            id: `night-${night.dayIndex}`,
+            nightDate: night.nightDate,
+            hasMeal: night.options.length > 0,
+          })),
+        ]
+      : nights.map((meal) => ({
+          id: meal.id,
+          nightDate: meal.nightDate,
+          hasMeal: nightHasStripMeal(meal, scope?.votes ?? [], snapshot.memberships),
+        }));
   const mutedDates =
     scope == null
       ? []
@@ -267,6 +329,8 @@ function WeekBallot() {
           week: scope.week,
           recipes: scope.recipes,
           shoppingList: scope.shoppingList,
+          options: scope.options,
+          optionRequests: scope.optionRequests,
         });
   const showMealsWaiting =
     !viewingPast && !showPeopleGate && Boolean(viewedWork?.needs_work) && !pendingFill;
@@ -334,7 +398,13 @@ function WeekBallot() {
         />
       }
       status={undefined}
-      footer={!viewingPast && !locked && check.ready && !showPeopleGate ? <LockBar /> : undefined}
+      footer={
+        choice && !showPeopleGate ? (
+          <LockInBar />
+        ) : !choice && !viewingPast && !locked && check.ready && !showPeopleGate ? (
+          <LockBar />
+        ) : undefined
+      }
     >
       <InstallPrompt />
       {viewingPast && past ? (
@@ -354,7 +424,7 @@ function WeekBallot() {
             router.replace(navigatorHref({ kind: "cooking" }), { scroll: false });
           }}
         />
-      ) : nights.length === 0 ? (
+      ) : nights.length === 0 && !choiceReady ? (
         showMealsWaiting ? (
           <div data-slot="waiting-for-bot" data-state="pending">
             {waitingCard}
@@ -383,7 +453,17 @@ function WeekBallot() {
               checkNowWakeHint={role === "planning" ? POST_LOCK_GET_RECIPES_NEXT_WAKE_HINT : undefined}
             />
           ) : null}
-          {nights.map((meal) => {
+          {showChoiceResults && scope ? (
+            <ChoiceResults
+              week={scope.week}
+              household={snapshot.household}
+              options={scope.options}
+              picks={scope.picks}
+              optionRequests={scope.optionRequests}
+              memberships={snapshot.memberships}
+            />
+          ) : null}
+          {cardNights.map((meal) => {
             const dayLabel = formatMealCardDayLabel(meal.nightDate);
             const dayName = weekdayLabelFromNight(meal.nightDate);
             const latest = latestVoteForMeal(scope?.votes ?? [], meal.id, snapshot.memberships);
@@ -423,6 +503,23 @@ function WeekBallot() {
               </div>
             );
           })}
+          {choiceReady && scope ? (
+            <ChoiceBallot
+              nights={activeChoiceNights}
+              picks={scope.picks}
+              memberships={snapshot.memberships}
+              submissions={scope.submissions}
+              membershipId={session?.membershipId ?? null}
+              canVote={Boolean(session?.membershipId) && canActOnBallot(session?.role)}
+              admin={isAdmin(session?.role)}
+              onPick={(optionId) => {
+                void pickOption(optionId);
+              }}
+              onRequest={(dayIndex, note) => requestNewOptions(dayIndex, note)}
+              onCancelRequest={(requestId) => cancelNewOptions(requestId)}
+              onReopen={(memberId) => reopenVote(memberId)}
+            />
+          ) : null}
         </div>
       )}
       {snapshot.mealHistory.length > 0 ? (
@@ -451,6 +548,7 @@ function WeekBallot() {
           meals={scope.meals}
           votes={scope.votes}
           memberships={snapshot.memberships}
+          ballotMode={scope.week.ballotMode}
           frozenWeekdays={frozenWeekdays({
             startsOn: scope.week.startsOn,
             status: scope.week.status,

@@ -146,6 +146,7 @@ describe("wizard v2 house setup", () => {
       weeklyBudgetCents: 15000,
     });
     expect(prompt).toContain("multi-approve ballot");
+    expect(prompt).toContain("submit_week_options");
     expect(prompt).not.toContain("dual-approve");
     expect(prompt).toMatch(/plates per night/i);
     expect(prompt).toMatch(/Sun 4/);
