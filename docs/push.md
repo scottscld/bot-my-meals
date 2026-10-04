@@ -78,7 +78,7 @@ limit 5;
 ## Troubleshooting
 
 - House shows no Notifications card. `/api/push/config` returned `publicKey: null`. The four Worker secrets are missing on the running version. Saving a secret creates a new version.
-- The Safari tab says to add the app to the Home Screen. iOS web push works only from the standalone Home Screen app. Turn on notifications from that icon, and allow the prompt from the tap.
+- The Safari tab says to add the app to the Home Screen. iOS web push works only from the standalone Home Screen app. Turn on notifications from that icon. The Allow prompt comes from that tap. A test that Apple rejects says so on the card.
 - Notifications are blocked. iPhone Settings → Notifications → Bot My Meals.
 - Send a test does nothing. Confirm the phone allowed notifications, then look at `private.push_outbox` and `net._http_response`. A missing Vault secret means the outbox row stays and nothing is posted.
 - A push arrives and the endpoint is gone (HTTP 404 or 410). The report deletes that subscription.

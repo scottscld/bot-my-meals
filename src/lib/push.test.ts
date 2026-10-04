@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { PUSH_DENIED, PUSH_INSTALL_FIRST, pushSupportState, urlBase64ToUint8Array } from "./push";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { PUSH_DENIED, PUSH_INSTALL_FIRST, pushCardMode, pushSupportState, urlBase64ToUint8Array } from "./push";
 
 function bytesToBase64Url(bytes: Uint8Array): string {
   let binary = "";
@@ -37,5 +39,24 @@ describe("pushSupportState", () => {
   it("keeps the install and denied copy", () => {
     expect(PUSH_INSTALL_FIRST).toMatch(/Add to Home Screen/);
     expect(PUSH_DENIED).toMatch(/Settings → Notifications → Bot My Meals/);
+  });
+});
+
+describe("pushCardMode", () => {
+  it("stays off when iOS says granted before Allow was shown", () => {
+    expect(pushCardMode({ base: "on", permissionState: "prompt", hasSubscription: true })).toBe("off");
+    expect(pushCardMode({ base: "on", permissionState: "granted", hasSubscription: true })).toBe("on");
+    expect(pushCardMode({ base: "on", permissionState: "granted", hasSubscription: false })).toBe("off");
+    expect(pushCardMode({ base: "off", permissionState: null, hasSubscription: false })).toBe("off");
+    expect(pushCardMode({ base: "install-first", permissionState: "granted", hasSubscription: true })).toBe(
+      "install-first",
+    );
+  });
+
+  it("starts the iOS prompt from subscribe in the tap", () => {
+    const source = readFileSync(path.join(import.meta.dirname, "../components/push-opt-in.tsx"), "utf8");
+    expect(source).toContain("pushManager\n      .subscribe({");
+    expect(source).toContain("subscribe() is the call that shows the iOS Allow prompt");
+    expect(source).not.toContain("requestPermission");
   });
 });

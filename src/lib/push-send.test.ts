@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildPushPayload, sendPush } from "./push-send";
+import { buildPushPayload, canonicalizeEcdsaSignature, sendPush } from "./push-send";
 
 function toBase64Url(bytes: Uint8Array): string {
   let binary = "";
@@ -49,6 +49,31 @@ describe("buildPushPayload", () => {
   it("marks a 410 as gone", async () => {
     const fetchImpl = vi.fn(async () => new Response(null, { status: 410 }));
     const result = await sendPush(await testSubscription(), message, await testVapid(), fetchImpl);
-    expect(result).toEqual({ ok: false, gone: true, status: 410 });
+    expect(result).toEqual({ ok: false, gone: true, status: 410, reason: "" });
+  });
+});
+
+describe("canonicalizeEcdsaSignature", () => {
+  it("folds a high S into the lower half and still verifies", async () => {
+    const pair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+    const data = new TextEncoder().encode("vapid");
+    const signature = new Uint8Array(await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, pair.privateKey, data));
+    const order = BigInt("0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551");
+    const high = new Uint8Array(signature);
+    let s = BigInt(0);
+    for (let index = 32; index < 64; index += 1) s = (s << BigInt(8)) + BigInt(high[index]);
+    s = s <= order / BigInt(2) ? order - s : s;
+    for (let index = 63; index >= 32; index -= 1) {
+      high[index] = Number(s & BigInt(255));
+      s >>= BigInt(8);
+    }
+    const low = canonicalizeEcdsaSignature(high);
+    let lowS = BigInt(0);
+    for (let index = 32; index < 64; index += 1) lowS = (lowS << BigInt(8)) + BigInt(low[index]);
+    expect(lowS <= order / BigInt(2)).toBe(true);
+    const signatureBytes = new Uint8Array(low);
+    expect(
+      await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, pair.publicKey, signatureBytes, data),
+    ).toBe(true);
   });
 });

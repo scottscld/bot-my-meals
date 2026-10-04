@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { HouseCard } from "@/components/house-card";
 import { Button } from "@/components/ui/button";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { supabaseDeletePushSubscription, supabaseSetPushPrefs, supabaseUpsertPushSubscription } from "@/lib/supabase/repo";
 import { isIosDevice, isStandaloneDisplay } from "@/lib/install";
-import { PUSH_DENIED, PUSH_INSTALL_FIRST, pushSupportState, urlBase64ToUint8Array } from "@/lib/push";
+import { PUSH_DENIED, PUSH_INSTALL_FIRST, pushCardMode, pushSupportState, urlBase64ToUint8Array } from "@/lib/push";
 
 type PushJson = {
   endpoint?: string;
@@ -34,6 +34,9 @@ export function PushOptIn() {
   const [weekLocked, setWeekLocked] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [workerReady, setWorkerReady] = useState(false);
+  const [permissionState, setPermissionState] = useState<"granted" | "denied" | "prompt" | null>(null);
+  const registrationRef = useRef<ServiceWorkerRegistration | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -59,6 +62,42 @@ export function PushOptIn() {
     };
   }, []);
 
+  useEffect(() => {
+    if (phase !== "ready") return;
+    let cancelled = false;
+    void (async () => {
+      if (!("serviceWorker" in navigator)) return;
+      const registration = await navigator.serviceWorker.ready;
+      if (cancelled) return;
+      registrationRef.current = registration;
+      let state: "granted" | "denied" | "prompt" | null = null;
+      try {
+        state = await registration.pushManager.permissionState({ userVisibleOnly: true });
+      } catch {
+        state = null;
+      }
+      const existing = await registration.pushManager.getSubscription();
+      if (cancelled) return;
+      // A subscription saved before iOS showed Allow cannot be prompted again until it is cleared.
+      if (state === "prompt" && existing) {
+        const endpointToDrop = existing.endpoint;
+        await existing.unsubscribe();
+        const client = createSupabaseBrowserClient();
+        if (client) await supabaseDeletePushSubscription(client, endpointToDrop).catch(() => undefined);
+        setEndpoint(null);
+      } else if (existing) {
+        setEndpoint(existing.endpoint);
+      }
+      if (!cancelled) {
+        setPermissionState(state);
+        setWorkerReady(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [phase]);
+
   if (phase !== "ready" || !publicKey) {
     const detail =
       phase === "error"
@@ -78,38 +117,44 @@ export function PushOptIn() {
     typeof Notification === "undefined" ? "default" : Notification.permission;
   const permission = permissionOverride ?? livePermission;
 
-  const support = pushSupportState({
-    hasSW: typeof navigator !== "undefined" && "serviceWorker" in navigator,
-    hasPushManager: typeof window !== "undefined" && "PushManager" in window,
-    hasNotification: typeof Notification !== "undefined",
-    standalone:
-      typeof window !== "undefined" &&
-      isStandaloneDisplay(
-        (query) => window.matchMedia(query),
-        "standalone" in navigator
-          ? Boolean((navigator as Navigator & { standalone?: boolean }).standalone)
-          : false,
-      ),
-    ios: typeof navigator !== "undefined" && isIosDevice(navigator.userAgent),
-    permission,
+  const ios = typeof navigator !== "undefined" && isIosDevice(navigator.userAgent);
+  const support = pushCardMode({
+    base: pushSupportState({
+      hasSW: typeof navigator !== "undefined" && "serviceWorker" in navigator,
+      hasPushManager: typeof window !== "undefined" && "PushManager" in window,
+      hasNotification: typeof Notification !== "undefined",
+      standalone:
+        typeof window !== "undefined" &&
+        isStandaloneDisplay(
+          (query) => window.matchMedia(query),
+          "standalone" in navigator
+            ? Boolean((navigator as Navigator & { standalone?: boolean }).standalone)
+            : false,
+        ),
+      ios,
+      permission,
+    }),
+    permissionState,
+    hasSubscription: Boolean(endpoint),
   });
 
   const turnOn = () => {
-    const asked = Notification.requestPermission();
+    const registration = registrationRef.current;
+    if (!registration) {
+      setMessage("Still checking this phone. Tap again.");
+      return;
+    }
     setBusy(true);
     setMessage(null);
-    void asked
-      .then(async (next) => {
-        setPermissionOverride(next);
-        if (next !== "granted") return;
-        const registration = await navigator.serviceWorker.ready;
-        const existing = await registration.pushManager.getSubscription();
-        const subscription =
-          existing ??
-          (await registration.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(publicKey),
-          }));
+    // subscribe() is the call that shows the iOS Allow prompt, and it has to start in this tap.
+    void registration.pushManager
+      .subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      })
+      .then(async (subscription) => {
+        setPermissionOverride("granted");
+        setPermissionState("granted");
         const client = createSupabaseBrowserClient();
         if (!client) throw new Error("Not signed in");
         const json = subscription.toJSON() as PushJson;
@@ -117,6 +162,10 @@ export function PushOptIn() {
         setEndpoint(subscription.endpoint);
       })
       .catch((err: unknown) => {
+        if (typeof Notification !== "undefined" && Notification.permission === "denied") {
+          setPermissionOverride("denied");
+          setPermissionState("denied");
+        }
         setMessage(err instanceof Error ? err.message : "Could not turn on notifications.");
       })
       .finally(() => setBusy(false));
@@ -142,9 +191,23 @@ export function PushOptIn() {
         <p className="type-body mt-2 text-muted-foreground">This browser can’t show notifications.</p>
       ) : null}
       {support === "off" ? (
-        <Button type="button" size="fat" variant="primary" className="mt-3 w-full" disabled={busy} onClick={turnOn}>
-          {busy ? "Turning on…" : "Turn on notifications"}
-        </Button>
+        <>
+          <Button
+            type="button"
+            size="fat"
+            variant="primary"
+            className="mt-3 w-full"
+            disabled={busy || !workerReady}
+            onClick={turnOn}
+          >
+            {busy ? "Turning on…" : workerReady ? "Turn on notifications" : "Checking this phone…"}
+          </Button>
+          {ios ? (
+            <p className="type-meta mt-2 text-muted-foreground">
+              Allow the iPhone prompt that appears after this tap.
+            </p>
+          ) : null}
+        </>
       ) : null}
       {support === "on" ? (
         <div className="mt-3 space-y-3">
@@ -173,8 +236,12 @@ export function PushOptIn() {
               setMessage(null);
               void fetch("/api/push/test", { method: "POST" })
                 .then(async (response) => {
-                  const body = (await response.json()) as { error?: string };
-                  setMessage(response.ok ? "Test sent." : body.error ?? "Could not send a test.");
+                  const body = (await response.json()) as { error?: string; sent?: number };
+                  if (response.ok && (body.sent ?? 0) > 0) {
+                    setMessage("Test sent. It can take a few seconds to arrive.");
+                    return;
+                  }
+                  setMessage(body.error ?? "Could not send a test.");
                 })
                 .catch(() => setMessage("Could not send a test."));
             }}

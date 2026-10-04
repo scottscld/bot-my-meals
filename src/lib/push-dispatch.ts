@@ -14,7 +14,7 @@ export type PushDispatchClaim = {
   subscriptions: PushDispatchSubscription[];
 };
 
-export type PushSendResult = { ok: boolean; gone: boolean; status: number };
+export type PushSendResult = { ok: boolean; gone: boolean; status: number; reason?: string };
 
 const SEND_CONCURRENCY = 6;
 
@@ -84,6 +84,7 @@ export async function handlePushDispatch(input: {
   const ok: string[] = [];
   let failed = 0;
   let sent = 0;
+  let failDetail = "";
   for (const item of settled) {
     if (item.status === "rejected") {
       failed += 1;
@@ -93,9 +94,15 @@ export async function handlePushDispatch(input: {
     else if (item.value.result.ok) {
       ok.push(item.value.endpoint);
       sent += 1;
-    } else failed += 1;
+    } else {
+      failed += 1;
+      if (!failDetail) {
+        const reason = item.value.result.reason ? ` ${item.value.result.reason}` : "";
+        failDetail = `${item.value.result.status}${reason}`;
+      }
+    }
   }
-  const error = failed > 0 ? `${failed} push send(s) failed` : null;
+  const error = failed > 0 ? `${failed} push send(s) failed${failDetail ? `: ${failDetail}` : ""}` : null;
   await input.report(input.config.dispatchSecret, outboxId, gone, ok, error);
   return { status: 200, body: { sent, gone: gone.length, failed } };
 }

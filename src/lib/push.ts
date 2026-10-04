@@ -34,3 +34,20 @@ export function pushSupportState(input: {
   if (input.permission === "granted") return "on";
   return "off";
 }
+
+/**
+ * iOS can report Notification.permission as "granted" without showing Allow.
+ * The push permission state is what decides whether the card is actually on.
+ */
+export function pushCardMode(input: {
+  base: PushSupport;
+  permissionState: "granted" | "denied" | "prompt" | null;
+  hasSubscription: boolean;
+}): PushSupport {
+  if (input.base === "unsupported" || input.base === "install-first") return input.base;
+  if (input.permissionState === "denied" || input.base === "denied") return "denied";
+  const granted =
+    input.permissionState === "granted" || (input.permissionState == null && input.base === "on");
+  if (granted && input.hasSubscription) return "on";
+  return "off";
+}
