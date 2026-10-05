@@ -11,7 +11,7 @@ describe("three-choice voting migration", () => {
       .filter((name) => name.endsWith(".sql"))
       .sort();
     expect(names).toContain(file);
-    expect(names.at(-1)).toBe("20261005120000_list_review_heb_order.sql");
+    expect(names.at(-1)).toBe("20261005130000_try_finalize_week_loop_nt.sql");
     const sql = readFileSync(path.join(dir, file), "utf8");
     expect(sql).toContain(
       "meal_option_picks_one_per_night unique (week_id, day_index, membership_id)",
