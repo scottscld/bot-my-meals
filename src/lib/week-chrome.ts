@@ -1,7 +1,9 @@
 import { weekdayLabelFromNight } from "./dates";
+import { listStatusCopy } from "./list-review";
+import { LOCK_SUCCESS_LIST_CTA } from "./lock-success";
 import { isNightOff, nightLifecycle } from "./lock";
 import { recipeNightsForWeek } from "./recipes";
-import type { Meal, Membership, ShoppingPrompt, Vote, WeekStatus } from "./types";
+import type { ListStatus, Meal, Membership, ShoppingPrompt, Vote, WeekStatus } from "./types";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -96,19 +98,20 @@ export function stripCellMuted(input: {
   }
 }
 
+/** Review CTA while the list is in review and still has something to buy. Later statuses use the short order label. */
 export function showOpenShoppingList(input: {
   weekStatus: WeekStatus;
-  shoppingPrompt: ShoppingPrompt;
   pendingFill: boolean;
-  items: readonly { checked: boolean }[] | null;
-}): boolean {
-  if (input.pendingFill) return false;
-  if (input.weekStatus !== "locked") return false;
-  if (shoppingPromptClosed(input.shoppingPrompt)) return false;
-  const items = input.items;
-  if (!items || items.length === 0) return false;
-  if (items.every((item) => item.checked)) return false;
-  return true;
+  listStatus: ListStatus | null;
+  activeCount: number;
+}): string | null {
+  if (input.pendingFill) return null;
+  if (input.weekStatus !== "locked") return null;
+  if (!input.listStatus) return null;
+  if (input.listStatus === "review") {
+    return input.activeCount > 0 ? LOCK_SUCCESS_LIST_CTA : null;
+  }
+  return listStatusCopy({ status: input.listStatus }, "short");
 }
 
 /** Today or later, with a title, and not removed. Advances once that night's date is past in the house timezone. */

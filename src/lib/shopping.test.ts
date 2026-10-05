@@ -47,6 +47,12 @@ describe("shopping merge", () => {
         priceSource: null,
         pricedAt: null,
         checked: false,
+        source: "recipe",
+        note: null,
+        addedBy: null,
+        removedAt: null,
+        removedBy: null,
+        cart: null,
       },
       {
         id: "2",
@@ -60,6 +66,12 @@ describe("shopping merge", () => {
         priceSource: null,
         pricedAt: null,
         checked: false,
+        source: "recipe",
+        note: null,
+        addedBy: null,
+        removedAt: null,
+        removedBy: null,
+        cart: null,
       },
     ];
     const merged = mergeQuantities(items);
@@ -131,6 +143,12 @@ describe("shopping merge", () => {
       priceSource: "invented",
       pricedAt: "2026-09-01",
       checked: false,
+      source: "recipe",
+      note: null,
+      addedBy: null,
+      removedAt: null,
+      removedBy: null,
+      cart: null,
     };
     expect(listItemDisplay(priced)).toEqual({ name: "Olive oil", quantity: "3 tbsp" });
     expect(JSON.stringify(listItemDisplay(priced))).not.toContain("399");
@@ -167,6 +185,12 @@ describe("sticky store labels", () => {
         priceSource: null,
         pricedAt: null,
         checked: false,
+        source: "recipe",
+        note: null,
+        addedBy: null,
+        removedAt: null,
+        removedBy: null,
+        cart: null,
       },
       {
         id: "2",
@@ -180,6 +204,12 @@ describe("sticky store labels", () => {
         priceSource: "invented",
         pricedAt: "2026-09-01",
         checked: false,
+        source: "recipe",
+        note: null,
+        addedBy: null,
+        removedAt: null,
+        removedBy: null,
+        cart: null,
       },
       {
         id: "3",
@@ -193,6 +223,12 @@ describe("sticky store labels", () => {
         priceSource: null,
         pricedAt: null,
         checked: false,
+        source: "recipe",
+        note: null,
+        addedBy: null,
+        removedAt: null,
+        removedBy: null,
+        cart: null,
       },
     ];
 
@@ -212,7 +248,7 @@ describe("sticky store labels", () => {
       { id: "heb", householdId: "h", name: "H-E-B", slug: "h-e-b", sortOrder: 0 },
     ];
     const items: ShoppingItem[] = [
-      ...Array.from({ length: 30 }, (_, index) => ({
+      ...Array.from({ length: 30 }, (_, index): ShoppingItem => ({
         id: `heb-${index}`,
         householdId: "h",
         shoppingListId: "l",
@@ -224,6 +260,12 @@ describe("sticky store labels", () => {
         priceSource: null,
         pricedAt: null,
         checked: false,
+        source: "recipe",
+        note: null,
+        addedBy: null,
+        removedAt: null,
+        removedBy: null,
+        cart: null,
       })),
       {
         id: "orphan",
@@ -237,12 +279,68 @@ describe("sticky store labels", () => {
         priceSource: null,
         pricedAt: null,
         checked: false,
+        source: "recipe",
+        note: null,
+        addedBy: null,
+        removedAt: null,
+        removedBy: null,
+        cart: null,
       },
     ];
     const groups = groupStickyStoreLists(items, stores);
     expect(groups.map((group) => group.label)).toEqual(["H-E-B", "Other"]);
     expect(groups[0]?.items).toHaveLength(30);
     expect(groups[1]?.items.map((item) => item.name)).toEqual(["Loose onion"]);
+  });
+
+  it("groups only active items and keeps a manual item under H-E-B", () => {
+    const stores: Store[] = [
+      { id: "heb", householdId: "h", name: "H-E-B", slug: "h-e-b", sortOrder: 0 },
+    ];
+    const items: ShoppingItem[] = [
+      {
+        id: "milk",
+        householdId: "h",
+        shoppingListId: "l",
+        storeId: "heb",
+        name: "Milk",
+        quantity: 1,
+        unit: "gal",
+        priceCents: null,
+        priceSource: null,
+        pricedAt: null,
+        checked: false,
+        source: "manual",
+        note: null,
+        addedBy: "mem",
+        removedAt: null,
+        removedBy: null,
+        cart: null,
+      },
+      {
+        id: "gone",
+        householdId: "h",
+        shoppingListId: "l",
+        storeId: "heb",
+        name: "Spinach",
+        quantity: 1,
+        unit: "bag",
+        priceCents: null,
+        priceSource: null,
+        pricedAt: null,
+        checked: false,
+        source: "recipe",
+        note: null,
+        addedBy: null,
+        removedAt: "2026-10-06T00:00:00.000Z",
+        removedBy: "mem",
+        cart: null,
+      },
+    ];
+    const groups = groupStickyStoreLists(items, stores);
+    expect(groups.map((group) => group.label)).toEqual(["H-E-B"]);
+    expect(groups[0]?.items.map((item) => item.name)).toEqual(["Milk"]);
+    expect(groups[0]?.items[0]?.source).toBe("manual");
   });
 
   it("renders items when the store slug is the apostrophe form smith-s", () => {
@@ -265,6 +363,12 @@ describe("sticky store labels", () => {
         priceSource: null,
         pricedAt: null,
         checked: false,
+        source: "recipe",
+        note: null,
+        addedBy: null,
+        removedAt: null,
+        removedBy: null,
+        cart: null,
       },
       {
         id: "2",
@@ -278,6 +382,12 @@ describe("sticky store labels", () => {
         priceSource: null,
         pricedAt: null,
         checked: false,
+        source: "recipe",
+        note: null,
+        addedBy: null,
+        removedAt: null,
+        removedBy: null,
+        cart: null,
       },
       {
         id: "3",
@@ -291,6 +401,12 @@ describe("sticky store labels", () => {
         priceSource: null,
         pricedAt: null,
         checked: false,
+        source: "recipe",
+        note: null,
+        addedBy: null,
+        removedAt: null,
+        removedBy: null,
+        cart: null,
       },
     ];
 
@@ -338,14 +454,14 @@ describe("Clear Sky list craft", () => {
     expect(row).not.toContain("animate-spin");
     expect(row).not.toContain("aria-busy");
     expect(row).not.toContain("syncing");
-    expect(list).toContain("useOptimisticValue");
+    expect(list).not.toContain("useOptimisticValue");
     expect(list).not.toContain("syncing");
     expect(list).not.toContain(".pending");
     expect(list).toContain("LIST_PRE_LOCK_DESCRIPTION");
     expect(list).toContain("removedMealIds");
     expect(list).not.toContain("skippedMealIds");
     expect(list).not.toMatch(/approves or skips/i);
-    expect(list).not.toContain("Approve");
+    expect(list).toContain("ListApproveBar");
     expect(list).not.toContain("Skip");
     expect(list).not.toContain("You approved");
     expect(list).not.toContain("Your vote needed");

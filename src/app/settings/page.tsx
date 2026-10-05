@@ -10,6 +10,7 @@ import { BotWakeSettings } from "@/components/bot-wake-settings";
 import { AppShell } from "@/components/app-shell";
 import { AuthGate } from "@/components/auth-gate";
 import { HouseCard } from "@/components/house-card";
+import { HebCheckoutSettings } from "@/components/heb-checkout-settings";
 import { HouseStores } from "@/components/house-stores";
 import { InstallPrompt } from "@/components/install-prompt";
 import { NameField } from "@/components/name-field";
@@ -176,6 +177,8 @@ function SettingsBody() {
         onAdd={(slug, name) => void addStore(slug, name)}
         onRemove={(id) => void removeStore(id)}
       />
+
+      <HebCheckoutSettings household={snapshot.household} stores={snapshot.stores} canEdit={owner} />
 
       <HouseCard className="mt-6">
         <h2 className="type-section text-primary">Weekly meal budget</h2>

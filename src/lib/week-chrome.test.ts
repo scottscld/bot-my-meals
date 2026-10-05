@@ -92,20 +92,22 @@ describe("week chrome lock rules", () => {
     ).toBe(false);
   });
 
-  it("hides Open shopping list after done, dismiss, all checked, unlock, or an empty list", () => {
+  it("shows Review shopping list while the list is in review, then the short order label", () => {
     const open = {
       weekStatus: "locked" as const,
-      shoppingPrompt: "open" as const,
       pendingFill: false,
-      items: [{ checked: false }],
+      listStatus: "review" as const,
+      activeCount: 2,
     };
-    expect(showOpenShoppingList(open)).toBe(true);
-    expect(showOpenShoppingList({ ...open, shoppingPrompt: "done" })).toBe(false);
-    expect(showOpenShoppingList({ ...open, shoppingPrompt: "dismissed" })).toBe(false);
-    expect(showOpenShoppingList({ ...open, items: [{ checked: true }] })).toBe(false);
-    expect(showOpenShoppingList({ ...open, weekStatus: "voting" })).toBe(false);
-    expect(showOpenShoppingList({ ...open, items: [] })).toBe(false);
-    expect(showOpenShoppingList({ ...open, pendingFill: true })).toBe(false);
+    expect(showOpenShoppingList(open)).toBe("Review shopping list");
+    expect(showOpenShoppingList({ ...open, activeCount: 0 })).toBeNull();
+    expect(showOpenShoppingList({ ...open, weekStatus: "voting" })).toBeNull();
+    expect(showOpenShoppingList({ ...open, pendingFill: true })).toBeNull();
+    expect(showOpenShoppingList({ ...open, listStatus: null })).toBeNull();
+    expect(showOpenShoppingList({ ...open, listStatus: "approved" })).toBe("H-E-B order starting");
+    expect(showOpenShoppingList({ ...open, listStatus: "carting" })).toBe("Adding to the H-E-B cart");
+    expect(showOpenShoppingList({ ...open, listStatus: "awaiting_review" })).toBe("Cart ready");
+    expect(showOpenShoppingList({ ...open, listStatus: "failed" })).toBe("Order didn't go through");
   });
 
   it("advances the first meal after that night ends and hides when none remain", () => {
@@ -218,14 +220,14 @@ describe("week chrome markup", () => {
         planNext: null,
       }),
     );
-    expect(both).toContain("Open shopping list");
+    expect(both).toContain("Review shopping list");
     expect(both).toContain("Tuesday’s meal");
     expect(both).toContain("Lemon roast chicken");
     expect(both).toContain("text-white");
     expect(both).toContain("truncate");
     expect(both).toContain('href="/list"');
     expect(both).toContain('href="/week/tue"');
-    expect(both.indexOf("Open shopping list")).toBeLessThan(both.indexOf("Tuesday’s meal"));
+    expect(both.indexOf("Review shopping list")).toBeLessThan(both.indexOf("Tuesday’s meal"));
     expect(both).not.toContain("See recipes");
     expect(both).not.toContain("First meal");
     expect(both).not.toContain("Tonight");
@@ -246,7 +248,7 @@ describe("week chrome markup", () => {
         planNext: null,
       }),
     );
-    expect(mealOnly).not.toContain("Open shopping list");
+    expect(mealOnly).not.toContain("Review shopping list");
     expect(mealOnly).toContain("Tuesday’s meal");
     expect(mealOnly).toContain("Tacos");
     expect(mealOnly).not.toContain("First meal");
@@ -286,9 +288,10 @@ describe("week chrome markup", () => {
     expect(control).toContain("disabled={busy}");
     expect(control).toContain("animate-spin");
     expect(week).toContain('titleAside={locked ? <UnlockWeekControl variant="inline" /> : undefined}');
-    expect(list).toContain('data-slot="done-shopping"');
-    expect(list).toContain('data-slot="dismiss-shopping"');
-    expect(list).toContain("closeShoppingPrompt");
+    expect(list).not.toContain('data-slot="done-shopping"');
+    expect(list).not.toContain('data-slot="dismiss-shopping"');
+    expect(list).not.toContain("closeShoppingPrompt");
+    expect(list).toContain("ListApproveBar");
     expect(list).not.toContain("cart");
   });
 });

@@ -24,11 +24,14 @@ import {
   botCheckSettingFromChoice,
   botCheckUpdateColumns,
   botCheckWrite,
+  ORDER_STALE_MS,
   botCheckForSnapshot,
+  buildBotOrder,
   deriveBotCheckStatus,
   preferBotCheckStatus,
   fixedWaitingCadenceLine,
   normalizeBotCheckSetting,
+  orderWorkDue,
   waitingCadenceLine,
   type BotCheckStatus,
   type BotWorkMeal,
@@ -169,6 +172,7 @@ describe("bot status needs_work reasons", () => {
       "plate_or_people_change",
       "portion_pending",
       "fill_pending",
+      "order_pending",
       "setup_incomplete",
       "idle",
     ]);
@@ -428,6 +432,121 @@ describe("bot status needs_work reasons", () => {
         shoppingList: { items: [] },
       }),
     ).toMatchObject({ needs_work: false, reason: "idle" });
+  });
+});
+
+describe("H-E-B order work", () => {
+  const now = new Date("2026-10-06T22:00:00.000Z");
+  const order = buildBotOrder({
+    listId: "list-1",
+    status: "approved",
+    resume: false,
+    storeName: "H-E-B",
+    storeSlug: "h-e-b",
+    postalCode: "76177",
+    checkoutMode: "review",
+    maxTotalCents: 30000,
+    delivery: null,
+    items: [
+      {
+        item_id: "item-1",
+        name: "Chicken thighs",
+        quantity: 2,
+        unit: "lb",
+        note: null,
+        source: "recipe",
+      },
+    ],
+  });
+  const household = {
+    botCheckMode: "adaptive" as const,
+    botCheckIntervalHours: null,
+    setupStep: 8,
+    householdSize: 4,
+    nightHeadcounts: PLATES,
+    coupleNights: [5, 6],
+    familySize: 4,
+    coupleSize: 2,
+  };
+  const readyRecipe = {
+    id: "r1",
+    mealId: "m1",
+    servings: 4,
+    prepMinutes: 10,
+    cookMinutes: 20,
+    steps: ["Roast the chicken."],
+    ingredients: [{ id: "i1", name: "Chicken", quantity: 1, unit: "lb", storeId: "store" }],
+  };
+
+  it("treats an approved list as order_pending and a fresh cart as idle", () => {
+    expect(orderWorkDue({ status: "approved", orderStatusAt: null, now })).toEqual({
+      due: true,
+      resume: false,
+    });
+    expect(
+      orderWorkDue({
+        status: "carting",
+        orderStatusAt: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
+        now,
+      }),
+    ).toEqual({ due: false, resume: false });
+    expect(
+      orderWorkDue({
+        status: "carting",
+        orderStatusAt: new Date(now.getTime() - ORDER_STALE_MS).toISOString(),
+        now,
+      }),
+    ).toEqual({ due: false, resume: false });
+    expect(
+      orderWorkDue({
+        status: "carting",
+        orderStatusAt: new Date(now.getTime() - ORDER_STALE_MS - 60 * 1000).toISOString(),
+        now,
+      }),
+    ).toEqual({ due: true, resume: true });
+    expect(orderWorkDue({ status: "carting", orderStatusAt: null, now })).toEqual({
+      due: false,
+      resume: false,
+    });
+
+    const base = {
+      household,
+      meals: [{ id: "m1", title: "Lemon roast chicken", servings: 4, nightDate: "2026-10-05" }],
+      votes: [],
+      memberships: [],
+      week: { id: "week-1", status: "locked" as const, startsOn: "2026-10-04", ballotMode: "choice3" as const },
+      recipes: [readyRecipe],
+      shoppingList: { items: [{ id: "item" }] },
+    };
+    expect(botCheckForSnapshot(base)).toMatchObject({ needs_work: false, reason: "idle" });
+    const pending = botCheckForSnapshot({ ...base, order });
+    expect(pending).toMatchObject({ needs_work: true, reason: "order_pending" });
+    expect(pending.work?.order).toMatchObject({
+      list_id: "list-1",
+      status: "approved",
+      resume: false,
+      checkout_mode: "review",
+      max_total_cents: 30000,
+      delivery: null,
+      store: { name: "H-E-B", slug: "h-e-b", postal_code: "76177", site: "https://www.heb.com" },
+    });
+    const filling = botCheckForSnapshot({ ...base, recipes: [], shoppingList: null, order });
+    expect(filling.reason).toBe("fill_pending");
+    expect(filling.work?.order).toBeUndefined();
+    expect(
+      deriveBotCheckStatus({
+        mode: "adaptive",
+        intervalHours: null,
+        setupComplete: true,
+        ballotStatus: "fulfilled",
+        ballotHouseholdSize: 4,
+        ballotNightHeadcounts: PLATES,
+        householdSize: 4,
+        nightHeadcounts: PLATES,
+        meals: [],
+        orderPending: true,
+      }).reason,
+    ).toBe("order_pending");
   });
 });
 
@@ -709,6 +828,9 @@ function statusClient(input: {
       }
       if (table === "meal_option_requests") {
         return query({ data: input.optionRequests ?? [], error: null }, record(table));
+      }
+      if (table === "household_stores") {
+        return query({ data: [], error: null }, record(table));
       }
       throw new Error(`unexpected table ${table}`);
     },

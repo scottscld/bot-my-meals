@@ -275,6 +275,12 @@ export function emptyHousehold(name: string, owner?: UserProfile): HouseholdSnap
     postalCode: null,
     botCheckMode: "adaptive",
     botCheckIntervalHours: null,
+    hebCheckoutMode: "review",
+    deliveryDays: null,
+    deliveryWindowStart: null,
+    deliveryWindowEnd: null,
+    orderMaxCents: null,
+    listApproverRole: "owner",
   };
 
   const memberships: Membership[] = owner

@@ -1,4 +1,4 @@
-export const LOCK_SUCCESS_LIST_CTA = "Open shopping list";
+export const LOCK_SUCCESS_LIST_CTA = "Review shopping list";
 export const LOCK_SUCCESS_RECIPES_CTA = "See recipes";
 export const LOCK_SUCCESS_LIST_KICKER = "Next up";
 export const LOCK_SUCCESS_RECIPES_KICKER = "First meal";
@@ -7,10 +7,8 @@ export const LOCKED_CHIP_LABEL = "Locked";
 export const UNLOCK_WEEK_LABEL = "Unlock week";
 export const UNLOCK_WEEK_CONFIRM = "Unlock so you can edit what’s left?";
 export const UNLOCK_WEEK_CHOICE_CONFIRM = "Unlock and reopen voting? Everyone locks in again.";
-export const DONE_SHOPPING_LABEL = "Done shopping";
-export const DISMISS_SHOPPING_LABEL = "Dismiss";
-
-export const LIST_LOCKED_SECONDARY = "Check off as you shop. No prices — just what you need.";
+export const LIST_LOCKED_SECONDARY =
+  "Remove what you already have. Add anything missing. Then approve.";
 
 /** Ballot-3 — /list and /recipes pre-lock empties. Brief §5–6 / §7. */
 export const LOCK_FIRST_TITLE = "Lock the week first";

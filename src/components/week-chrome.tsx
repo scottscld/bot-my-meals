@@ -22,6 +22,7 @@ export function WeekChrome({
   locked,
   mutedDates,
   showShoppingList,
+  shoppingListLabel,
   firstMeal,
   onSelect,
   onStep,
@@ -34,6 +35,7 @@ export function WeekChrome({
   locked: boolean;
   mutedDates: readonly string[];
   showShoppingList: boolean;
+  shoppingListLabel?: string;
   firstMeal: WeekChromeMeal | null;
   onSelect: (mealId: string) => void;
   onStep: (direction: -1 | 1) => boolean;
@@ -48,6 +50,7 @@ export function WeekChrome({
       locked={locked}
       mutedDates={mutedDates}
       showShoppingList={showShoppingList}
+      shoppingListLabel={shoppingListLabel}
       firstMeal={firstMeal}
       onSelect={onSelect}
       onStep={onStep}
@@ -64,6 +67,7 @@ export function WeekChromeView({
   locked,
   mutedDates,
   showShoppingList,
+  shoppingListLabel,
   firstMeal,
   onSelect,
   onStep,
@@ -76,12 +80,14 @@ export function WeekChromeView({
   locked: boolean;
   mutedDates: readonly string[];
   showShoppingList: boolean;
+  shoppingListLabel?: string;
   firstMeal: WeekChromeMeal | null;
   onSelect: (mealId: string) => void;
   onStep: (direction: -1 | 1) => boolean;
   planNext: { busy: boolean; onPlan: () => void } | null;
 }) {
   const showRows = showShoppingList || Boolean(firstMeal);
+  const listLabel = shoppingListLabel || LOCK_SUCCESS_LIST_CTA;
   const featuredEyebrow = firstMeal ? featuredMealEyebrow(firstMeal.nightDate, todayIso) : null;
   return (
     <div data-slot="week-chrome" data-locked={locked ? "true" : "false"} className="min-w-0">
@@ -114,12 +120,12 @@ export function WeekChromeView({
             <Link
               href="/list"
               data-slot="lock-success-list"
-              aria-label={LOCK_SUCCESS_LIST_CTA}
+              aria-label={listLabel}
               className="flex min-h-12 w-full items-center gap-3 rounded-[12px] bg-primary px-4 py-3 text-primary-foreground"
             >
               <ClipboardList className="size-5 shrink-0" aria-hidden />
               <span className="min-w-0 flex-1 truncate text-base font-semibold text-white">
-                {LOCK_SUCCESS_LIST_CTA}
+                {listLabel}
               </span>
               <ChevronRight className="size-5 shrink-0" aria-hidden />
             </Link>

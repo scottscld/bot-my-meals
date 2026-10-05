@@ -4,10 +4,13 @@ import { nightsPlannedFromHeadcounts } from "@/lib/house-setup";
 import type {
   HouseholdSettingsPatch,
   HouseholdSnapshot,
+  ListStatus,
   MealPick,
   MealProposalInput,
   Role,
   SavedMeal,
+  ShoppingItem,
+  ShoppingList,
   ShoppingPrompt,
   Vote,
   VoteChoice,
@@ -68,37 +71,76 @@ export function patchShoppingPrompt(
   };
 }
 
-function withCheckedItems(
-  list: HouseholdSnapshot["shoppingList"],
+function withItem(
+  list: ShoppingList | null,
   itemId: string,
-  checked: boolean,
-): HouseholdSnapshot["shoppingList"] {
+  update: (item: ShoppingItem) => ShoppingItem,
+): ShoppingList | null {
   if (!list) return list;
   return {
     ...list,
-    items: list.items.map((item) => (item.id === itemId ? { ...item, checked } : item)),
+    items: list.items.map((item) => (item.id === itemId ? update(item) : item)),
   };
 }
 
-export function patchItemChecked(
+function patchList(
   snapshot: HouseholdSnapshot,
-  itemId: string,
-  checked: boolean,
+  listId: string | null,
+  itemId: string | null,
+  update: (list: ShoppingList) => ShoppingList | null,
 ): HouseholdSnapshot {
   const planningList = snapshot.planning?.shoppingList;
-  if (planningList?.items.some((item) => item.id === itemId) && snapshot.planning) {
+  const onPlanning =
+    snapshot.planning &&
+    planningList &&
+    ((listId != null && planningList.id === listId) ||
+      (itemId != null && planningList.items.some((item) => item.id === itemId)));
+  if (onPlanning && snapshot.planning && planningList) {
     return {
       ...snapshot,
       planning: {
         ...snapshot.planning,
-        shoppingList: withCheckedItems(planningList, itemId, checked),
+        shoppingList: update(planningList),
       },
     };
   }
-  return {
-    ...snapshot,
-    shoppingList: withCheckedItems(snapshot.shoppingList, itemId, checked),
-  };
+  if (!snapshot.shoppingList) return snapshot;
+  return { ...snapshot, shoppingList: update(snapshot.shoppingList) };
+}
+
+export function patchItemRemoved(
+  snapshot: HouseholdSnapshot,
+  itemId: string,
+  removedAt: string | null,
+  membershipId: string | null,
+): HouseholdSnapshot {
+  return patchList(snapshot, null, itemId, (list) =>
+    withItem(list, itemId, (item) => ({
+      ...item,
+      removedAt,
+      removedBy: removedAt ? membershipId : null,
+    })),
+  );
+}
+
+export function patchItemAdded(
+  snapshot: HouseholdSnapshot,
+  listId: string,
+  item: ShoppingItem,
+): HouseholdSnapshot {
+  return patchList(snapshot, listId, null, (list) => {
+    if (list.id !== listId) return list;
+    if (list.items.some((row) => row.id === item.id)) return list;
+    return { ...list, items: [...list.items, item] };
+  });
+}
+
+export function patchListStatus(
+  snapshot: HouseholdSnapshot,
+  listId: string,
+  status: ListStatus,
+): HouseholdSnapshot {
+  return patchList(snapshot, listId, null, (list) => (list.id === listId ? { ...list, status } : list));
 }
 
 function nextVotes(
@@ -200,6 +242,18 @@ export function patchHousehold(
   if (patch.botCheckMode !== undefined) household = { ...household, botCheckMode: patch.botCheckMode };
   if (patch.botCheckIntervalHours !== undefined) {
     household = { ...household, botCheckIntervalHours: patch.botCheckIntervalHours };
+  }
+  if (patch.hebCheckoutMode !== undefined) household = { ...household, hebCheckoutMode: patch.hebCheckoutMode };
+  if (patch.deliveryDays !== undefined) household = { ...household, deliveryDays: patch.deliveryDays };
+  if (patch.deliveryWindowStart !== undefined) {
+    household = { ...household, deliveryWindowStart: patch.deliveryWindowStart };
+  }
+  if (patch.deliveryWindowEnd !== undefined) {
+    household = { ...household, deliveryWindowEnd: patch.deliveryWindowEnd };
+  }
+  if (patch.orderMaxCents !== undefined) household = { ...household, orderMaxCents: patch.orderMaxCents };
+  if (patch.listApproverRole !== undefined) {
+    household = { ...household, listApproverRole: patch.listApproverRole };
   }
   if (patch.coupleNights !== undefined && patch.nightHeadcounts === undefined) {
     household = { ...household, coupleNights: patch.coupleNights };

@@ -57,6 +57,12 @@ export function buildShoppingItems(input: {
         priceSource: null,
         pricedAt: null,
         checked: false,
+        source: "recipe",
+        note: null,
+        addedBy: null,
+        removedAt: null,
+        removedBy: null,
+        cart: null,
       });
     }
   }
@@ -104,12 +110,13 @@ export function groupStickyStoreLists(
   items: ShoppingItem[],
   stores: Store[],
 ): Array<{ store: Store; label: string; items: ShoppingItem[] }> {
-  const groups = groupItemsByStore(items, stores).map((group) => ({
+  const active = items.filter((item) => item.removedAt == null);
+  const groups = groupItemsByStore(active, stores).map((group) => ({
     ...group,
     label: listStoreLabel(group.store),
   }));
   const known = new Set(stores.map((store) => store.id));
-  const orphans = items
+  const orphans = active
     .filter((item) => !known.has(item.storeId))
     .sort((a, b) => a.name.localeCompare(b.name));
   if (orphans.length === 0) return groups;

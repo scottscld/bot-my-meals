@@ -23,13 +23,13 @@ import {
   applyOptimistic,
   dropOptimistic,
   patchHousehold,
-  patchItemChecked,
+  patchItemAdded,
+  patchItemRemoved,
   patchMealProposal,
   patchMemberName,
   patchMemberRole,
   patchStoreAdded,
   patchStoreRemoved,
-  LIST_CHECK_SAVE_ERROR,
   patchSavedMealAdded,
   patchSavedMealRemoved,
   patchPick,
@@ -79,12 +79,18 @@ import {
   supabaseRemoveSavedMeal,
   supabaseRequestSavedMeal,
   supabaseRequestWeekBallot,
+  supabaseRetryOrder,
   supabaseSaveMeal,
   supabaseSaveWeekPeople,
   supabaseSavePlanningPeople,
   supabaseSetMemberRole,
   supabaseSetVote,
-  supabaseToggleItem,
+  supabaseAddItem,
+  supabaseApproveList,
+  supabaseMarkOrderPlaced,
+  supabaseRemoveItem,
+  supabaseReopenList,
+  supabaseRestoreItem,
   supabaseSetShoppingPrompt,
   supabaseUnlockWeek,
   supabaseUpdateHousehold,
@@ -93,9 +99,11 @@ import type { JoinPeek } from "@/lib/join";
 import type {
   HouseholdSettingsPatch,
   HouseholdSnapshot,
+  ManualItemDraft,
   MealProposalInput,
   Role,
   Session,
+  ShoppingItem,
   ShoppingPrompt,
   VoteChoice,
   WeekRole,
@@ -154,7 +162,13 @@ type SupperContextValue = {
   cancelNewOptions: (requestId: string) => Promise<void>;
   unlockWeek: () => Promise<void>;
   closeShoppingPrompt: (prompt: Extract<ShoppingPrompt, "done" | "dismissed">) => Promise<void>;
-  toggleItem: (itemId: string, checked: boolean) => Promise<void>;
+  removeItem: (itemId: string) => Promise<void>;
+  restoreItem: (itemId: string) => Promise<void>;
+  addItem: (listId: string, draft: ManualItemDraft) => Promise<void>;
+  approveList: (listId: string) => Promise<void>;
+  reopenList: (listId: string) => Promise<void>;
+  retryOrder: (listId: string) => Promise<void>;
+  markOrderPlaced: (listId: string, orderNumber?: string | null) => Promise<void>;
   updateHousehold: (patch: HouseholdSettingsPatch) => Promise<void>;
   addStore: (slug: string, name: string) => Promise<void>;
   removeStore: (storeId: string) => Promise<void>;
@@ -220,7 +234,13 @@ function createSetupContext(): SupperContextValue {
     cancelNewOptions: async () => setupUnavailable(),
     unlockWeek: async () => setupUnavailable(),
     closeShoppingPrompt: async () => setupUnavailable(),
-    toggleItem: async () => setupUnavailable(),
+    removeItem: async () => setupUnavailable(),
+    restoreItem: async () => setupUnavailable(),
+    addItem: async () => setupUnavailable(),
+    approveList: async () => setupUnavailable(),
+    reopenList: async () => setupUnavailable(),
+    retryOrder: async () => setupUnavailable(),
+    markOrderPlaced: async () => setupUnavailable(),
     updateHousehold: async () => setupUnavailable(),
     addStore: async () => setupUnavailable(),
     removeStore: async () => setupUnavailable(),
@@ -858,15 +878,87 @@ function SupabaseSupperProvider({ children }: { children: React.ReactNode }) {
           await supabaseSetShoppingPrompt(client, weekId, prompt);
         });
       },
-      toggleItem: (itemId, checked) =>
-        runOptimistic(`item:${itemId}`, (snap) => patchItemChecked(snap, itemId, checked), async () => {
+      removeItem: (itemId) =>
+        runOptimistic(
+          `item:${itemId}`,
+          (snap) => patchItemRemoved(snap, itemId, new Date().toISOString(), session?.membershipId ?? null),
+          async () => {
+            const client = createSupabaseBrowserClient();
+            if (!client) throw new Error("Not signed in");
+            await supabaseRemoveItem(client, itemId);
+          },
+        ),
+      restoreItem: (itemId) =>
+        runOptimistic(`item:${itemId}`, (snap) => patchItemRemoved(snap, itemId, null, null), async () => {
           const client = createSupabaseBrowserClient();
-          if (!client) throw new Error(LIST_CHECK_SAVE_ERROR);
-          try {
-            await supabaseToggleItem(client, itemId, checked);
-          } catch {
-            throw new Error(LIST_CHECK_SAVE_ERROR);
-          }
+          if (!client) throw new Error("Not signed in");
+          await supabaseRestoreItem(client, itemId);
+        }),
+      addItem: (listId, draft) => {
+        const current = session;
+        const visible = displayRef.current;
+        const stores = [...(visible?.stores ?? [])].sort(
+          (a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name),
+        );
+        const storeId = draft.storeId ?? stores[0]?.id ?? "";
+        const item: ShoppingItem = {
+          id: `optimistic-item-${createId("item")}`,
+          householdId: current?.householdId ?? visible?.household.id ?? "",
+          shoppingListId: listId,
+          storeId,
+          name: draft.name.trim().replace(/\s+/g, " "),
+          quantity: draft.quantity,
+          unit: draft.unit,
+          priceCents: null,
+          priceSource: null,
+          pricedAt: null,
+          checked: false,
+          source: "manual",
+          note: draft.note,
+          addedBy: current?.membershipId ?? null,
+          removedAt: null,
+          removedBy: null,
+          cart: null,
+        };
+        return runOptimistic(
+          `item-add:${listId}`,
+          (snap) => patchItemAdded(snap, listId, item),
+          async () => {
+            const client = createSupabaseBrowserClient();
+            if (!client) throw new Error("Not signed in");
+            await supabaseAddItem(client, listId, { ...draft, storeId: draft.storeId ?? (storeId || null) });
+          },
+          { replace: false },
+        );
+      },
+      approveList: (listId) =>
+        run(async () => {
+          const client = createSupabaseBrowserClient();
+          if (!client) throw new Error("Not signed in");
+          await supabaseApproveList(client, listId);
+        }).then(() => {
+          void requestBotWake("list_approved");
+        }),
+      reopenList: (listId) =>
+        run(async () => {
+          const client = createSupabaseBrowserClient();
+          if (!client) throw new Error("Not signed in");
+          await supabaseReopenList(client, listId);
+        }),
+      retryOrder: (listId) =>
+        run(async () => {
+          const client = createSupabaseBrowserClient();
+          if (!client) throw new Error("Not signed in");
+          await supabaseRetryOrder(client, listId);
+        }).then(() => {
+          void requestBotWake("list_approved");
+        }),
+      markOrderPlaced: (listId, orderNumber) =>
+        run(async () => {
+          const client = createSupabaseBrowserClient();
+          if (!client) throw new Error("Not signed in");
+          const trimmed = orderNumber?.trim();
+          await supabaseMarkOrderPlaced(client, listId, trimmed ? trimmed : null);
         }),
       updateHousehold: (patch) => {
         const current = session;

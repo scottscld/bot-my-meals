@@ -216,6 +216,15 @@ function WeekBallot() {
       recipes: scope.recipes,
       shoppingList: scope.shoppingList,
     });
+  const shoppingListLabel =
+    scope == null
+      ? null
+      : showOpenShoppingList({
+          weekStatus: scope.week.status,
+          pendingFill,
+          listStatus: scope.shoppingList?.status ?? null,
+          activeCount: scope.shoppingList?.items.filter((item) => item.removedAt == null).length ?? 0,
+        });
   const botCheck = botCheckForHousehold(snapshot);
   const check = scope ? checkWeekLock(scope.meals, scope.votes, snapshot.memberships) : { ready: false };
   const nights = scope ? recipeNightsForWeek(scope.meals) : [];
@@ -376,15 +385,8 @@ function WeekBallot() {
           todayIso={todayIso}
           locked={Boolean(locked)}
           mutedDates={mutedDates}
-          showShoppingList={
-            scope != null &&
-            showOpenShoppingList({
-              weekStatus: scope.week.status,
-              shoppingPrompt: scope.week.shoppingPrompt,
-              pendingFill,
-              items: scope.shoppingList?.items ?? null,
-            })
-          }
+          showShoppingList={shoppingListLabel != null}
+          shoppingListLabel={shoppingListLabel ?? undefined}
           firstMeal={firstMeal}
           onSelect={jumpToNight}
           onStep={stepWeek}

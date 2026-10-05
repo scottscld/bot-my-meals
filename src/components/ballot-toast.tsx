@@ -7,16 +7,20 @@ export function BallotToast({
   message,
   onDismiss,
   alert = false,
+  action,
+  duration = 3200,
 }: {
   message?: string;
   onDismiss: () => void;
   alert?: boolean;
+  action?: { label: string; onClick: () => void };
+  duration?: number;
 }) {
   useEffect(() => {
     if (!message) return;
-    const timer = window.setTimeout(onDismiss, 3200);
+    const timer = window.setTimeout(onDismiss, duration);
     return () => window.clearTimeout(timer);
-  }, [message, onDismiss]);
+  }, [message, onDismiss, duration, action?.label]);
 
   if (!message) return null;
 
@@ -30,7 +34,17 @@ export function BallotToast({
         "bottom-[calc(4.5rem+env(safe-area-inset-bottom))]",
       )}
     >
-      <p className="type-body text-foreground">{message}</p>
+      <p className="type-body text-foreground">
+        {message}
+        {action ? (
+          <>
+            {" · "}
+            <button type="button" className="font-semibold text-primary" onClick={action.onClick}>
+              {action.label}
+            </button>
+          </>
+        ) : null}
+      </p>
     </div>
   );
 }

@@ -11,6 +11,8 @@ export function WeeklyBudgetField({
   postalCode,
   describedBy,
   className,
+  placeholder,
+  onBlur,
 }: {
   id: string;
   value: string;
@@ -18,6 +20,8 @@ export function WeeklyBudgetField({
   postalCode: string | null | undefined;
   describedBy?: string;
   className?: string;
+  placeholder?: string;
+  onBlur?: () => void;
 }) {
   const prefix = weeklyBudgetCurrencyPrefix(postalCode);
   const currencyId = `${id}-currency`;
@@ -51,6 +55,8 @@ export function WeeklyBudgetField({
         )}
         aria-describedby={describedByIds || undefined}
         autoComplete="off"
+        placeholder={placeholder}
+        onBlur={onBlur}
       />
     </div>
   );

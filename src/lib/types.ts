@@ -75,6 +75,17 @@ export type Household = {
   botCheckMode: BotCheckMode;
   /** 1, 3, or 6 when fixed. Null when adaptive. */
   botCheckIntervalHours: BotCheckIntervalHours | null;
+  /** `review` waits for a person to check out. `auto` places the order under the guard. */
+  hebCheckoutMode: "auto" | "review";
+  /** 0 = Sunday … 6 = Saturday. Null means any day. */
+  deliveryDays: number[] | null;
+  /** Household local time `HH:MM`. Null means any time. */
+  deliveryWindowStart: string | null;
+  deliveryWindowEnd: string | null;
+  /** Null falls back to the weekly budget. */
+  orderMaxCents: number | null;
+  /** `owner` is Admins only. `voter` is Admins and voters. */
+  listApproverRole: "owner" | "voter";
 };
 
 export type BallotRequest = {
@@ -229,6 +240,19 @@ export type SavedMeal = {
   sourceRecipeId: string | null;
 };
 
+export const LIST_STATUSES = [
+  "review",
+  "approved",
+  "carting",
+  "awaiting_review",
+  "ordered",
+  "failed",
+] as const;
+export type ListStatus = (typeof LIST_STATUSES)[number];
+
+export const CART_ITEM_STATUSES = ["added", "not_found", "substituted", "skipped"] as const;
+export type CartItemStatus = (typeof CART_ITEM_STATUSES)[number];
+
 export type ShoppingItem = {
   id: string;
   householdId: string;
@@ -240,7 +264,28 @@ export type ShoppingItem = {
   priceCents: number | null;
   priceSource: string | null;
   pricedAt: string | null;
+  /** Kept for old clients. The list no longer writes it. */
   checked: boolean;
+  source: "recipe" | "manual";
+  note: string | null;
+  addedBy: string | null;
+  removedAt: string | null;
+  removedBy: string | null;
+  cart: {
+    status: CartItemStatus;
+    product: string | null;
+    quantity: number | null;
+    priceCents: number | null;
+    note: string | null;
+  } | null;
+};
+
+export type ManualItemDraft = {
+  name: string;
+  quantity: number;
+  unit: string;
+  note: string | null;
+  storeId: string | null;
 };
 
 export type ShoppingList = {
@@ -248,6 +293,22 @@ export type ShoppingList = {
   householdId: string;
   weekId: string;
   generatedAt: string;
+  status: ListStatus;
+  approvedAt: string | null;
+  approvedBy: string | null;
+  order: {
+    statusAt: string | null;
+    orderedAt: string | null;
+    windowStart: string | null;
+    windowEnd: string | null;
+    label: string | null;
+    subtotalCents: number | null;
+    totalCents: number | null;
+    number: string | null;
+    cartUrl: string | null;
+    message: string | null;
+    overGuard: boolean;
+  };
   items: ShoppingItem[];
 };
 
@@ -289,6 +350,12 @@ export type HouseholdSettingsPatch = {
   postalCode?: string | null;
   botCheckMode?: BotCheckMode;
   botCheckIntervalHours?: BotCheckIntervalHours | null;
+  hebCheckoutMode?: "auto" | "review";
+  deliveryDays?: number[] | null;
+  deliveryWindowStart?: string | null;
+  deliveryWindowEnd?: string | null;
+  orderMaxCents?: number | null;
+  listApproverRole?: "owner" | "voter";
 };
 
 export type PendingInvite = {

@@ -5,7 +5,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { HouseCard } from "@/components/house-card";
 import { Button } from "@/components/ui/button";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { supabaseDeletePushSubscription, supabaseSetPushPrefs, supabaseUpsertPushSubscription } from "@/lib/supabase/repo";
+import {
+  supabaseDeletePushSubscription,
+  supabaseSetPushOrderPrefs,
+  supabaseSetPushPrefs,
+  supabaseUpsertPushSubscription,
+} from "@/lib/supabase/repo";
 import { isIosDevice, isStandaloneDisplay } from "@/lib/install";
 import { PUSH_DENIED, PUSH_INSTALL_FIRST, pushCardMode, pushSupportState, urlBase64ToUint8Array } from "@/lib/push";
 
@@ -32,6 +37,7 @@ export function PushOptIn() {
   const [endpoint, setEndpoint] = useState<string | null>(null);
   const [menuReady, setMenuReady] = useState(true);
   const [weekLocked, setWeekLocked] = useState(true);
+  const [orders, setOrders] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [workerReady, setWorkerReady] = useState(false);
@@ -182,6 +188,16 @@ export function PushOptIn() {
     });
   };
 
+  const saveOrderPrefs = (next: boolean) => {
+    setOrders(next);
+    if (!endpoint) return;
+    const client = createSupabaseBrowserClient();
+    if (!client) return;
+    void supabaseSetPushOrderPrefs(client, endpoint, next).catch((err: unknown) => {
+      setMessage(err instanceof Error ? err.message : "Could not save those switches.");
+    });
+  };
+
   return (
     <HouseCard className="mt-6" data-slot="push-opt-in">
       <h2 className="type-section text-primary">Notifications</h2>
@@ -225,6 +241,14 @@ export function PushOptIn() {
               type="checkbox"
               checked={weekLocked}
               onChange={(event) => savePrefs(menuReady, event.target.checked)}
+            />
+          </label>
+          <label className="flex min-h-12 items-center justify-between gap-3">
+            <span className="type-body">H-E-B order updates</span>
+            <input
+              type="checkbox"
+              checked={orders}
+              onChange={(event) => saveOrderPrefs(event.target.checked)}
             />
           </label>
           <Button

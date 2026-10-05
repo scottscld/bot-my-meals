@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { emptyHousehold } from "@/lib/seed";
-import type { HouseholdSnapshot, Meal, ShoppingItem } from "@/lib/types";
+import type { HouseholdSnapshot, Meal, ShoppingItem, ShoppingList } from "@/lib/types";
 import {
   LIST_CHECK_SAVE_ERROR,
   applyOptimistic,
   dropOptimistic,
   patchHousehold,
-  patchItemChecked,
+  patchItemAdded,
+  patchItemRemoved,
+  patchListStatus,
   patchMealProposal,
   patchMemberRole,
   patchPick,
@@ -15,6 +17,20 @@ import {
   patchVote,
   queueOptimistic,
 } from "@/lib/optimistic";
+
+const blankOrder: ShoppingList["order"] = {
+  statusAt: null,
+  orderedAt: null,
+  windowStart: null,
+  windowEnd: null,
+  label: null,
+  subtotalCents: null,
+  totalCents: null,
+  number: null,
+  cartUrl: null,
+  message: null,
+  overGuard: false,
+};
 
 function snapshot(): HouseholdSnapshot {
   const base = emptyHousehold("House", {
@@ -52,6 +68,12 @@ function snapshot(): HouseholdSnapshot {
     priceSource: null,
     pricedAt: null,
     checked: false,
+    source: "recipe",
+    note: null,
+    addedBy: null,
+    removedAt: null,
+    removedBy: null,
+    cart: null,
   };
   return {
     ...base,
@@ -61,6 +83,10 @@ function snapshot(): HouseholdSnapshot {
       householdId: base.household.id,
       weekId: base.week.id,
       generatedAt: "2026-09-27T00:00:00.000Z",
+      status: "review",
+      approvedAt: null,
+      approvedBy: null,
+      order: blankOrder,
       items: [item],
     },
   };
@@ -71,12 +97,51 @@ describe("optimistic snapshot patches", () => {
     expect(LIST_CHECK_SAVE_ERROR).toBe("Couldn\u2019t save \u2014 try again.");
   });
 
-  it("checks a shopping item without waiting on the saved list", () => {
+  it("removes and restores a shopping item on the cooking list and the planning list", () => {
     const base = snapshot();
-    const checked = patchItemChecked(base, "item-1", true);
-    expect(checked.shoppingList?.items[0]?.checked).toBe(true);
-    expect(base.shoppingList?.items[0]?.checked).toBe(false);
-    expect(patchItemChecked(checked, "item-1", false).shoppingList?.items[0]?.checked).toBe(false);
+    const cookingItem = base.shoppingList?.items[0];
+    if (!cookingItem || !base.shoppingList) throw new Error("missing list");
+    const planItem: ShoppingItem = { ...cookingItem, id: "plan-item", shoppingListId: "plan-list" };
+    const withPlanning: HouseholdSnapshot = {
+      ...base,
+      planning: {
+        week: { ...base.week, id: "plan-week" },
+        meals: [],
+        votes: [],
+        recipes: [],
+        shoppingList: {
+          ...base.shoppingList,
+          id: "plan-list",
+          weekId: "plan-week",
+          items: [planItem],
+        },
+        ballotRequest: null,
+        options: [],
+        picks: [],
+        submissions: [],
+        optionRequests: [],
+      },
+    };
+    const removed = patchItemRemoved(withPlanning, "item-1", "2026-10-06T00:00:00.000Z", "mem-1");
+    expect(removed.shoppingList?.items[0]?.removedAt).toBe("2026-10-06T00:00:00.000Z");
+    expect(removed.shoppingList?.items[0]?.removedBy).toBe("mem-1");
+    expect(removed.planning?.shoppingList?.items[0]?.removedAt).toBeNull();
+    expect(patchItemRemoved(removed, "item-1", null, null).shoppingList?.items[0]?.removedAt).toBeNull();
+    const planRemoved = patchItemRemoved(withPlanning, "plan-item", "2026-10-06T00:00:00.000Z", "mem-1");
+    expect(planRemoved.planning?.shoppingList?.items[0]?.removedAt).toBe("2026-10-06T00:00:00.000Z");
+    expect(planRemoved.shoppingList?.items[0]?.removedAt).toBeNull();
+
+    const added: ShoppingItem = { ...cookingItem, id: "item-2", name: "Paper towels", source: "manual" };
+    expect(patchItemAdded(withPlanning, "list-1", added).shoppingList?.items.map((item) => item.id)).toEqual([
+      "item-1",
+      "item-2",
+    ]);
+    const planAdded: ShoppingItem = { ...planItem, id: "plan-2", name: "Milk" };
+    expect(
+      patchItemAdded(withPlanning, "plan-list", planAdded).planning?.shoppingList?.items.map((item) => item.name),
+    ).toEqual(["Beans", "Milk"]);
+    expect(patchListStatus(withPlanning, "plan-list", "approved").planning?.shoppingList?.status).toBe("approved");
+    expect(patchListStatus(withPlanning, "list-1", "failed").shoppingList?.status).toBe("failed");
   });
 
   it("keeps a swap note and drops a remove note", () => {
@@ -111,6 +176,18 @@ describe("optimistic snapshot patches", () => {
     expect(next.meals[0]?.servings).toBe(servings);
     expect(next.meals).toBe(base.meals);
     expect(next.household.nightsPlanned).toBe(7);
+    const checkout = patchHousehold(base, {
+      hebCheckoutMode: "auto",
+      deliveryDays: [2, 4],
+      deliveryWindowStart: "16:00",
+      deliveryWindowEnd: "19:00",
+      orderMaxCents: 25000,
+      listApproverRole: "voter",
+    });
+    expect(checkout.household.hebCheckoutMode).toBe("auto");
+    expect(checkout.household.deliveryDays).toEqual([2, 4]);
+    expect(checkout.household.orderMaxCents).toBe(25000);
+    expect(checkout.household.listApproverRole).toBe("voter");
   });
 
   it("adds and removes a store", () => {

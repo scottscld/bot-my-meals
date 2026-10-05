@@ -12,6 +12,9 @@ import type {
   Recipe,
   Role,
   Session,
+  CartItemStatus,
+  ListStatus,
+  ManualItemDraft,
   ShoppingItem,
   ShoppingList,
   Store,
@@ -21,16 +24,26 @@ import type {
   Week,
   WeekScope,
 } from "@/lib/types";
+import { LIST_STATUSES } from "@/lib/types";
 import type { MemberDraft } from "@/lib/users";
 import { voteNotePersists } from "@/lib/ballot";
 import {
   botCheckForSnapshot,
   botCheckUpdateColumns,
+  buildBotOrder,
   normalizeBotCheckSetting,
+  orderWorkDue,
   preferBotCheckStatus,
   type BotCheckMeal,
   type BotCheckStatus,
+  type BotOrderItem,
 } from "@/lib/bot-check";
+import {
+  mapHebCheckoutColumns,
+  orderDelivery,
+  orderGuardCents,
+  validateHebCheckoutPatch,
+} from "@/lib/heb-checkout";
 import {
   clampHouseSetupStep,
   clampHouseholdSize,
@@ -117,6 +130,32 @@ function mapWeekRow(weekRow: Record<string, unknown>): Week {
   };
 }
 
+function asListStatus(value: unknown): ListStatus {
+  return LIST_STATUSES.includes(value as ListStatus) ? (value as ListStatus) : "review";
+}
+
+function asCartStatus(value: unknown): CartItemStatus | null {
+  switch (value) {
+    case "added":
+    case "not_found":
+    case "substituted":
+    case "skipped":
+      return value;
+    default:
+      return null;
+  }
+}
+
+function asText(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function asNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() && Number.isFinite(Number(value))) return Number(value);
+  return null;
+}
+
 function mapShoppingList(
   listRow: Record<string, unknown>,
   itemRows: readonly Record<string, unknown>[],
@@ -127,10 +166,27 @@ function mapShoppingList(
     householdId: String(listRow.household_id),
     weekId: String(listRow.week_id),
     generatedAt: String(listRow.generated_at ?? ""),
+    status: asListStatus(listRow.status),
+    approvedAt: asText(listRow.approved_at),
+    approvedBy: asText(listRow.approved_by),
+    order: {
+      statusAt: asText(listRow.order_status_at),
+      orderedAt: asText(listRow.ordered_at),
+      windowStart: asText(listRow.delivery_window_start),
+      windowEnd: asText(listRow.delivery_window_end),
+      label: asText(listRow.delivery_label),
+      subtotalCents: asNumber(listRow.subtotal_cents),
+      totalCents: asNumber(listRow.order_total_cents),
+      number: asText(listRow.order_number),
+      cartUrl: asText(listRow.cart_url),
+      message: asText(listRow.order_message),
+      overGuard: listRow.over_guard === true,
+    },
     items: itemRows
       .filter((row) => String(row.shopping_list_id) === listId)
-      .map(
-        (row): ShoppingItem => ({
+      .map((row): ShoppingItem => {
+        const cartStatus = asCartStatus(row.cart_status);
+        return {
           id: String(row.id),
           householdId: String(row.household_id),
           shoppingListId: String(row.shopping_list_id),
@@ -138,12 +194,26 @@ function mapShoppingList(
           name: String(row.name),
           quantity: Number(row.quantity),
           unit: String(row.unit ?? ""),
-          priceCents: typeof row.price_cents === "number" ? row.price_cents : null,
-          priceSource: typeof row.price_source === "string" ? row.price_source : null,
-          pricedAt: typeof row.priced_at === "string" ? row.priced_at : null,
+          priceCents: asNumber(row.price_cents),
+          priceSource: asText(row.price_source),
+          pricedAt: asText(row.priced_at),
           checked: Boolean(row.checked),
-        }),
-      ),
+          source: row.source === "manual" ? "manual" : "recipe",
+          note: asText(row.note),
+          addedBy: asText(row.added_by),
+          removedAt: asText(row.removed_at),
+          removedBy: asText(row.removed_by),
+          cart: cartStatus
+            ? {
+                status: cartStatus,
+                product: asText(row.cart_product),
+                quantity: asNumber(row.cart_quantity),
+                priceCents: asNumber(row.cart_price_cents),
+                note: asText(row.cart_note),
+              }
+            : null,
+        };
+      }),
   };
 }
 
@@ -450,6 +520,7 @@ export async function fetchSupabaseSnapshot(
           : null,
       botCheckMode: botCheck.mode,
       botCheckIntervalHours: botCheck.intervalHours,
+      ...mapHebCheckoutColumns(householdRow),
     },
     memberships: (membersRes.data ?? []).map(
       (row): Membership => ({
@@ -710,6 +781,18 @@ export async function supabaseSetPushPrefs(
   if (error) throw new Error(error.message);
 }
 
+export async function supabaseSetPushOrderPrefs(
+  client: SupabaseClient,
+  endpoint: string,
+  orders: boolean,
+) {
+  const { error } = await client.rpc("set_push_order_prefs", {
+    p_endpoint: endpoint,
+    p_orders: orders,
+  });
+  if (error) throw new Error(error.message);
+}
+
 export async function supabaseUnlockWeek(
   client: SupabaseClient,
   session: Session,
@@ -722,7 +805,6 @@ export async function supabaseUnlockWeek(
     .update({ status: "voting", locked_at: null, editable_from: editableFrom })
     .eq("id", weekId);
   if (error) throw new Error(error.message);
-  await client.from("shopping_lists").delete().eq("week_id", weekId);
 }
 
 export async function supabaseSetShoppingPrompt(
@@ -737,12 +819,52 @@ export async function supabaseSetShoppingPrompt(
   if (error) throw new Error(error.message);
 }
 
-export async function supabaseToggleItem(
+export async function supabaseRemoveItem(client: SupabaseClient, itemId: string) {
+  const { error } = await client.rpc("remove_shopping_item", { target_item: itemId });
+  if (error) throw new Error(error.message);
+}
+
+export async function supabaseRestoreItem(client: SupabaseClient, itemId: string) {
+  const { error } = await client.rpc("restore_shopping_item", { target_item: itemId });
+  if (error) throw new Error(error.message);
+}
+
+export async function supabaseAddItem(client: SupabaseClient, listId: string, draft: ManualItemDraft) {
+  const { error } = await client.rpc("add_shopping_item", {
+    target_list: listId,
+    item_name: draft.name,
+    item_quantity: draft.quantity,
+    item_unit: draft.unit,
+    item_note: draft.note,
+    target_store: draft.storeId,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function supabaseApproveList(client: SupabaseClient, listId: string) {
+  const { error } = await client.rpc("approve_shopping_list", { target_list: listId });
+  if (error) throw new Error(error.message);
+}
+
+export async function supabaseReopenList(client: SupabaseClient, listId: string) {
+  const { error } = await client.rpc("reopen_shopping_list", { target_list: listId });
+  if (error) throw new Error(error.message);
+}
+
+export async function supabaseRetryOrder(client: SupabaseClient, listId: string) {
+  const { error } = await client.rpc("retry_shopping_order", { target_list: listId });
+  if (error) throw new Error(error.message);
+}
+
+export async function supabaseMarkOrderPlaced(
   client: SupabaseClient,
-  itemId: string,
-  checked: boolean,
+  listId: string,
+  orderNumber?: string | null,
 ) {
-  const { error } = await client.from("shopping_items").update({ checked }).eq("id", itemId);
+  const { error } = await client.rpc("mark_order_placed", {
+    target_list: listId,
+    placed_order_number: orderNumber ?? null,
+  });
   if (error) throw new Error(error.message);
 }
 
@@ -754,6 +876,8 @@ export async function supabaseUpdateHousehold(
   if (session.role !== "owner" || !session.householdId) {
     throw new Error("Only an Admin can change household settings.");
   }
+  const hebError = validateHebCheckoutPatch(patch);
+  if (hebError) throw new Error(hebError);
   const nightHeadcounts = patch.nightHeadcounts
     ? normalizeNightHeadcounts(patch.nightHeadcounts)
     : undefined;
@@ -786,6 +910,18 @@ export async function supabaseUpdateHousehold(
         ? {}
         : { nights_planned: clampNightsPlanned(patch.nightsPlanned) }),
       ...(patch.postalCode === undefined ? {} : { postal_code: patch.postalCode }),
+      ...(patch.hebCheckoutMode === undefined ? {} : { heb_checkout_mode: patch.hebCheckoutMode }),
+      ...(patch.deliveryDays === undefined
+        ? {}
+        : { delivery_days: patch.deliveryDays && patch.deliveryDays.length ? patch.deliveryDays : null }),
+      ...(patch.deliveryWindowStart === undefined
+        ? {}
+        : { delivery_window_start: patch.deliveryWindowStart }),
+      ...(patch.deliveryWindowEnd === undefined
+        ? {}
+        : { delivery_window_end: patch.deliveryWindowEnd }),
+      ...(patch.orderMaxCents === undefined ? {} : { order_max_cents: patch.orderMaxCents }),
+      ...(patch.listApproverRole === undefined ? {} : { list_approver_role: patch.listApproverRole }),
       ...botCheckUpdateColumns(patch),
       ...(nightHeadcounts
         ? { nights_planned: nightsPlannedFromHeadcounts(nightHeadcounts) }
@@ -1009,7 +1145,7 @@ export type BotCheckStatusResult =
   | { ok: false; error: "unauthorized" | "no_household" };
 
 const BOT_STATUS_HOUSEHOLD_COLUMNS =
-  "bot_check_mode, bot_check_interval_hours, setup_step, household_size, night_headcounts, couple_nights, family_size, couple_size, timezone, week_starts_on";
+  "bot_check_mode, bot_check_interval_hours, setup_step, household_size, night_headcounts, couple_nights, family_size, couple_size, timezone, week_starts_on, postal_code, weekly_budget_cents, heb_checkout_mode, delivery_days, delivery_window_start, delivery_window_end, order_max_cents, list_approver_role";
 
 function asRole(value: unknown): Role | null {
   switch (value) {
@@ -1137,6 +1273,108 @@ export async function supabaseCurrentWeekLocked(
   return split.cooking?.status === "locked" || split.planning?.status === "locked";
 }
 
+/** True when an open week’s list is approved and waiting for the bot to start the order. */
+export async function supabaseListAwaitingBot(
+  client: SupabaseClient,
+  householdId: string,
+): Promise<boolean> {
+  const [weeksRes, householdRes, listsRes] = await Promise.all([
+    client
+      .from("weeks")
+      .select("id, status, starts_on")
+      .eq("household_id", householdId)
+      .order("starts_on", { ascending: false })
+      .limit(8),
+    client.from("households").select("timezone, week_starts_on").eq("id", householdId).maybeSingle(),
+    client.from("shopping_lists").select("week_id, status").eq("household_id", householdId),
+  ]);
+  if (weeksRes.error) throw new Error(weeksRes.error.message);
+  if (householdRes.error) throw new Error(householdRes.error.message);
+  if (listsRes.error) throw new Error(listsRes.error.message);
+  const today = todayInTimeZone(new Date(), String(householdRes.data?.timezone ?? ""));
+  const split = splitOpenWeeks(
+    rowsOf(weeksRes.data).flatMap((row) => {
+      const status = asWeekStatus(row.status);
+      if (!row.id || !status) return [];
+      return [{
+        id: String(row.id),
+        status,
+        startsOn: typeof row.starts_on === "string" ? row.starts_on.slice(0, 10) : null,
+      }];
+    }),
+    today,
+    Number(householdRes.data?.week_starts_on) || 0,
+  );
+  const open = new Set(
+    [split.cooking?.id, split.planning?.id].filter((id): id is string => Boolean(id)),
+  );
+  return rowsOf(listsRes.data).some((row) => open.has(String(row.week_id)) && row.status === "approved");
+}
+
+async function loadOrderForWeek(
+  client: SupabaseClient,
+  householdId: string,
+  weekId: string,
+  weekLocked: boolean,
+  householdRow: Record<string, unknown>,
+  stores: readonly { name: string; slug: string; sort_order: number }[],
+) {
+  if (!weekLocked) return null;
+  const listRes = await client
+    .from("shopping_lists")
+    .select("id, status, order_status_at")
+    .eq("household_id", householdId)
+    .eq("week_id", weekId)
+    .maybeSingle();
+  if (listRes.error) throw new Error(listRes.error.message);
+  if (!listRes.data?.id) return null;
+  const status = asListStatus(listRes.data.status);
+  const due = orderWorkDue({
+    status,
+    orderStatusAt: asText(listRes.data.order_status_at),
+    now: new Date(),
+  });
+  if (!due.due || (status !== "approved" && status !== "carting")) return null;
+  const itemsRes = await client
+    .from("shopping_items")
+    .select("id, name, quantity, unit, note, source, store_id")
+    .eq("shopping_list_id", String(listRes.data.id))
+    .is("removed_at", null);
+  if (itemsRes.error) throw new Error(itemsRes.error.message);
+  const heb = mapHebCheckoutColumns(householdRow);
+  const store =
+    stores.find((row) => row.slug === "h-e-b") ??
+    [...stores].sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name))[0];
+  const items: BotOrderItem[] = rowsOf(itemsRes.data).map((row) => ({
+    item_id: String(row.id),
+    name: String(row.name ?? ""),
+    quantity: Number(row.quantity ?? 1),
+    unit: String(row.unit ?? ""),
+    note: asText(row.note),
+    source: row.source === "manual" ? "manual" : "recipe",
+  }));
+  return buildBotOrder({
+    listId: String(listRes.data.id),
+    status,
+    resume: due.resume,
+    storeName: store?.name?.trim() || "H-E-B",
+    storeSlug: store?.slug || "h-e-b",
+    postalCode: asText(householdRow.postal_code),
+    checkoutMode: heb.hebCheckoutMode,
+    maxTotalCents: orderGuardCents({
+      orderMaxCents: heb.orderMaxCents,
+      weeklyBudgetCents: asNumber(householdRow.weekly_budget_cents),
+    }),
+    delivery: orderDelivery({
+      deliveryDays: heb.deliveryDays,
+      deliveryWindowStart: heb.deliveryWindowStart,
+      deliveryWindowEnd: heb.deliveryWindowEnd,
+      timezone: String(householdRow.timezone ?? ""),
+    }),
+    items,
+  });
+}
+
 /** Quiet-wake read. Recipe and shopping rows load only after the week is locked. */
 export async function supabaseBotCheckStatus(client: SupabaseClient): Promise<BotCheckStatusResult> {
   const { data: userData, error: userError } = await client.auth.getUser();
@@ -1207,6 +1445,18 @@ export async function supabaseBotCheckStatus(client: SupabaseClient): Promise<Bo
     familySize: Number(householdRow.family_size) || 4,
     coupleSize: Number(householdRow.couple_size) || 2,
   };
+
+  const storesRes = await client
+    .from("household_stores")
+    .select("name, slug, sort_order")
+    .eq("household_id", householdId);
+  if (storesRes.error) throw new Error(storesRes.error.message);
+  const orderStores = rowsOf(storesRes.data).map((row) => ({
+    name: String(row.name ?? ""),
+    slug: String(row.slug ?? ""),
+    sort_order: Number(row.sort_order ?? 0),
+  }));
+  const householdRecord = householdRow as unknown as Record<string, unknown>;
 
   if (!openWeekRows.length) {
     return {
@@ -1374,6 +1624,14 @@ export async function supabaseBotCheckStatus(client: SupabaseClient): Promise<Bo
       recipes = fill.recipes;
       shoppingList = fill.shoppingList;
     }
+    const order = await loadOrderForWeek(
+      client,
+      householdId,
+      openWeek.id,
+      openWeek.status === "locked",
+      householdRecord,
+      orderStores,
+    );
 
     statuses.push(
       botCheckForSnapshot({
@@ -1395,6 +1653,7 @@ export async function supabaseBotCheckStatus(client: SupabaseClient): Promise<Bo
         shoppingList,
         options,
         optionRequests,
+        order,
       }),
     );
   }

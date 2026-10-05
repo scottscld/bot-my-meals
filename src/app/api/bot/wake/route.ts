@@ -8,7 +8,12 @@ import {
   type WakeEvent,
 } from "@/lib/bot-wake";
 import { readBotWakeSecrets, saveBotWakeSecrets } from "@/lib/bot-wake-secret";
-import { fetchSupabaseSession, supabaseBotCheckStatus, supabaseCurrentWeekLocked } from "@/lib/supabase/repo";
+import {
+  fetchSupabaseSession,
+  supabaseBotCheckStatus,
+  supabaseCurrentWeekLocked,
+  supabaseListAwaitingBot,
+} from "@/lib/supabase/repo";
 import { createSupabaseForRequest } from "@/lib/supabase/server";
 import { isAdmin } from "@/lib/users";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -40,16 +45,26 @@ async function wakeFacts(
   client: SupabaseClient,
   householdId: string,
   event: WakeEvent,
-): Promise<{ weekLocked: boolean; needsWork: boolean }> {
+): Promise<{ weekLocked: boolean; needsWork: boolean; listApproved: boolean }> {
   switch (event) {
     case "check_now":
-      return { weekLocked: false, needsWork: false };
+      return { weekLocked: false, needsWork: false, listApproved: false };
     case "week_locked":
-      return { weekLocked: await supabaseCurrentWeekLocked(client, householdId), needsWork: false };
+      return {
+        weekLocked: await supabaseCurrentWeekLocked(client, householdId),
+        needsWork: false,
+        listApproved: false,
+      };
     case "needs_work": {
       const status = await supabaseBotCheckStatus(client);
-      return { weekLocked: false, needsWork: status.ok && status.body.needs_work };
+      return { weekLocked: false, needsWork: status.ok && status.body.needs_work, listApproved: false };
     }
+    case "list_approved":
+      return {
+        weekLocked: false,
+        needsWork: false,
+        listApproved: await supabaseListAwaitingBot(client, householdId),
+      };
     default: {
       const _exhaustive: never = event;
       return _exhaustive;

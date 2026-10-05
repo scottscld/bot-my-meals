@@ -70,6 +70,7 @@ export const BOT_WORK_REASONS = [
   "plate_or_people_change",
   "portion_pending",
   "fill_pending",
+  "order_pending",
   "setup_incomplete",
   "idle",
 ] as const;
@@ -85,11 +86,89 @@ export type BotWorkNight = {
   note?: string;
 };
 
+export type BotOrderItem = {
+  item_id: string;
+  name: string;
+  quantity: number;
+  unit: string;
+  note: string | null;
+  source: "recipe" | "manual";
+};
+
+export type BotOrderWork = {
+  list_id: string;
+  status: "approved" | "carting";
+  resume: boolean;
+  store: {
+    name: string;
+    slug: string;
+    postal_code: string | null;
+    site: "https://www.heb.com";
+  };
+  checkout_mode: "auto" | "review";
+  max_total_cents: number | null;
+  delivery: {
+    days: number[];
+    start: string | null;
+    end: string | null;
+    timezone: string;
+  } | null;
+  items: BotOrderItem[];
+};
+
+export const ORDER_STALE_MS = 45 * 60 * 1000;
+
+/** Approved lists need an order. Carting resumes only after 45 minutes without a status update. */
+export function orderWorkDue(input: {
+  status: string | null;
+  orderStatusAt: string | null;
+  now: Date;
+}): { due: boolean; resume: boolean } {
+  if (input.status === "approved") return { due: true, resume: false };
+  if (input.status === "carting") {
+    const at = input.orderStatusAt ? Date.parse(input.orderStatusAt) : Number.NaN;
+    if (Number.isFinite(at) && input.now.getTime() - at > ORDER_STALE_MS) {
+      return { due: true, resume: true };
+    }
+  }
+  return { due: false, resume: false };
+}
+
+export function buildBotOrder(input: {
+  listId: string;
+  status: "approved" | "carting";
+  resume: boolean;
+  storeName: string;
+  storeSlug: string;
+  postalCode: string | null;
+  checkoutMode: "auto" | "review";
+  maxTotalCents: number | null;
+  delivery: BotOrderWork["delivery"];
+  items: BotOrderItem[];
+}): BotOrderWork {
+  return {
+    list_id: input.listId,
+    status: input.status,
+    resume: input.resume,
+    store: {
+      name: input.storeName,
+      slug: input.storeSlug,
+      postal_code: input.postalCode,
+      site: "https://www.heb.com",
+    },
+    checkout_mode: input.checkoutMode,
+    max_total_cents: input.maxTotalCents,
+    delivery: input.delivery,
+    items: input.items,
+  };
+}
+
 export type BotWork = {
   week_id: string;
   starts_on: string | null;
   ballot_mode: "single" | "choice3";
   nights?: BotWorkNight[];
+  order?: BotOrderWork;
 };
 
 export type BotCheckStatus = {
@@ -246,6 +325,8 @@ export function botWorkReason(input: {
   meals: BotWorkMeal[];
   /** Locked week still missing recipes and/or a shopping list. */
   fillPending?: boolean;
+  /** Approved list, or a carting run that has gone quiet for 45 minutes. */
+  orderPending?: boolean;
   /** Choice3 nights still missing 3 options or waiting on a new set. */
   optionNightsNeeded?: number;
 }): BotWorkReason {
@@ -271,6 +352,7 @@ export function botWorkReason(input: {
   if (plateDrift && portionGap) return "plate_or_people_change";
   if (portionGap) return "portion_pending";
   if (input.fillPending) return "fill_pending";
+  if (input.orderPending) return "order_pending";
   if (!input.setupComplete) return "setup_incomplete";
   return "idle";
 }
@@ -283,6 +365,7 @@ export function botWorkNeedsAction(reason: BotWorkReason): boolean {
     case "plate_or_people_change":
     case "portion_pending":
     case "fill_pending":
+    case "order_pending":
       return true;
     case "setup_incomplete":
     case "idle":
@@ -304,6 +387,7 @@ export function botCheckPhase(reason: BotWorkReason): BotCheckPhase {
     case "plate_or_people_change":
     case "portion_pending":
     case "fill_pending":
+    case "order_pending":
     case "setup_incomplete":
       return "active";
     default: {
@@ -341,6 +425,7 @@ export function deriveBotCheckStatus(input: {
   nightHeadcounts: number[];
   meals: BotWorkMeal[];
   fillPending?: boolean;
+  orderPending?: boolean;
   optionNightsNeeded?: number;
 }): BotCheckStatus {
   const setting = normalizeBotCheckSetting(input.mode, input.intervalHours);
@@ -353,6 +438,7 @@ export function deriveBotCheckStatus(input: {
     nightHeadcounts: input.nightHeadcounts,
     meals: input.meals,
     fillPending: input.fillPending,
+    orderPending: input.orderPending,
     optionNightsNeeded: input.optionNightsNeeded,
   });
   const phase = botCheckPhase(reason);
@@ -562,6 +648,8 @@ export function botCheckForSnapshot(snapshot: {
   shoppingList?: { items: readonly unknown[] } | null;
   options?: readonly MealOption[];
   optionRequests?: readonly OptionRequest[];
+  /** Set only when this locked week needs an H-E-B order run. */
+  order?: BotOrderWork | null;
 }): BotCheckStatus {
   const household = snapshot.household;
   const weekPlates = savedWeekPlates(snapshot.week);
@@ -603,6 +691,7 @@ export function botCheckForSnapshot(snapshot: {
     nightHeadcounts: weekPlates ?? ballot?.nightHeadcounts ?? household.nightHeadcounts,
     meals: mealFacts(household, weekPlates, snapshot.meals, snapshot.votes, snapshot.memberships),
     fillPending,
+    orderPending: Boolean(snapshot.order),
     optionNightsNeeded,
   });
   if (!status.needs_work || !snapshot.week?.id) return status;
@@ -622,6 +711,7 @@ export function botCheckForSnapshot(snapshot: {
       starts_on: snapshot.week.startsOn ?? null,
       ballot_mode: snapshot.week.ballotMode ?? "single",
       ...(workNights ? { nights: workNights } : {}),
+      ...(status.reason === "order_pending" && snapshot.order ? { order: snapshot.order } : {}),
     },
   };
 }

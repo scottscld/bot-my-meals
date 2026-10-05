@@ -25,7 +25,7 @@ export const POST_LOCK_GET_RECIPES_WAKE_HINT =
   "Wakes your bot to fill recipes and the shopping list.";
 export const RECIPE_PENDING_WAKE_HINT = "Wakes your bot to fill this recipe.";
 
-export const WAKE_EVENTS = ["week_locked", "needs_work", "check_now"] as const;
+export const WAKE_EVENTS = ["week_locked", "needs_work", "check_now", "list_approved"] as const;
 export type WakeEvent = (typeof WAKE_EVENTS)[number];
 
 export type BotWakeBody = {
@@ -79,6 +79,7 @@ export function parseWakeEvent(value: unknown): WakeEvent | null {
     case "week_locked":
     case "needs_work":
     case "check_now":
+    case "list_approved":
       return value;
     default:
       return null;
@@ -92,7 +93,7 @@ export function shouldWakeNeedsWork(previous: boolean | null, next: boolean): bo
 
 export function wakeAllowed(
   event: WakeEvent,
-  facts: { weekLocked: boolean; needsWork: boolean },
+  facts: { weekLocked: boolean; needsWork: boolean; listApproved: boolean },
 ): boolean {
   switch (event) {
     case "check_now":
@@ -101,6 +102,8 @@ export function wakeAllowed(
       return facts.weekLocked;
     case "needs_work":
       return facts.needsWork;
+    case "list_approved":
+      return facts.listApproved;
     default: {
       const _exhaustive: never = event;
       return _exhaustive;

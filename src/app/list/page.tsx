@@ -1,33 +1,49 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { AuthGate } from "@/components/auth-gate";
+import { BallotToast } from "@/components/ballot-toast";
+import { ListAddItemSheet } from "@/components/list-add-item-sheet";
+import { ListApproveBar } from "@/components/list-approve-bar";
+import { ListProblemSections } from "@/components/list-problem-sections";
+import { ListRemovedSection } from "@/components/list-removed-section";
 import { ListRow } from "@/components/list-row";
 import { LockFirstEmpty } from "@/components/lock-first-empty";
+import { OrderStatusCard } from "@/components/order-status-card";
 import { PostLockWaitingCard } from "@/components/post-lock-waiting";
 import { StatusStrip } from "@/components/status-strip";
 import { useSupper } from "@/components/supper-provider";
 import { useViewedWeek } from "@/components/use-viewed-week";
-import { Button } from "@/components/ui/button";
-import { useOptimisticValue } from "@/components/use-optimistic-value";
 import { formatWeekEyebrow } from "@/lib/dates";
 import { PAST_TITLES_ONLY } from "@/lib/week-navigator";
 import { shoppingListTitle, weekHomeTitle } from "@/lib/open-weeks";
 import { isNightOff } from "@/lib/lock";
 import {
-  DISMISS_SHOPPING_LABEL,
-  DONE_SHOPPING_LABEL,
-  LIST_LOCKED_SECONDARY,
-  LIST_NO_HOUSEHOLD,
   LIST_NOTHING_TO_BUY,
+  LIST_NO_HOUSEHOLD,
   LIST_PRE_LOCK_DESCRIPTION,
   LOCK_FIRST_TITLE,
 } from "@/lib/lock-success";
+import { memberName } from "@/lib/names";
+import {
+  activeItems,
+  canApprove,
+  canEditList,
+  listStatusCopy,
+  orderProblemItems,
+  removedItems,
+} from "@/lib/list-review";
 import { isPendingBotFill } from "@/lib/post-lock-waiting";
 import { recipeNightsForWeek } from "@/lib/recipes";
-import { groupStickyStoreLists, listItemDisplay } from "@/lib/shopping";
+import { groupStickyStoreLists } from "@/lib/shopping";
+import type { ManualItemDraft, ShoppingItem } from "@/lib/types";
+
+type ListToast = {
+  message: string;
+  duration?: number;
+  action?: { label: string; onClick: () => void };
+};
 
 export default function ListPage() {
   return (
@@ -38,9 +54,9 @@ export default function ListPage() {
 }
 
 function ListBody() {
-  const { snapshot, toggleItem, closeShoppingPrompt } = useSupper();
+  const { snapshot, session, removeItem, restoreItem, addItem } = useSupper();
   const { role, scope, past } = useViewedWeek();
-  const [pendingClose, setPendingClose] = useState<"done" | "dismissed" | null>(null);
+  const [toast, setToast] = useState<ListToast | null>(null);
   if (!snapshot) {
     return (
       <AppShell title="Shopping list">
@@ -121,7 +137,48 @@ function ListBody() {
     );
   }
 
-  const groups = groupStickyStoreLists(list.items, snapshot.stores);
+  const editing = canEditList(list.status, session?.role);
+  const approving = canApprove(session?.role, snapshot.household.listApproverRole);
+  const active = activeItems(list.items);
+  const gone = removedItems(list.items);
+  const problems = orderProblemItems(list.items);
+  const groups = groupStickyStoreLists(active, snapshot.stores);
+  const approver = snapshot.memberships.find((member) => member.id === list.approvedBy);
+  const secondary = listStatusCopy({
+    status: list.status,
+    approverName: approver ? memberName(approver) : null,
+    approvedAt: list.approvedAt,
+    timezone: snapshot.household.timezone,
+    deliveryLabel: list.order.label,
+    windowStart: list.order.windowStart,
+    windowEnd: list.order.windowEnd,
+    message: list.order.message,
+    checkoutMode: snapshot.household.hebCheckoutMode,
+  });
+  const reviewing = list.status === "review";
+
+  const forget = (item: ShoppingItem) => {
+    void removeItem(item.id)
+      .then(() => {
+        setToast({
+          message: "Removed " + item.name,
+          duration: 5000,
+          action: {
+            label: "Undo",
+            onClick: () => {
+              setToast(null);
+              void restoreItem(item.id);
+            },
+          },
+        });
+      })
+      .catch(() => undefined);
+  };
+
+  const add = (draft: ManualItemDraft) =>
+    addItem(list.id, draft).then(() => {
+      setToast({ message: "Added " + draft.name });
+    });
 
   return (
     <AppShell
@@ -129,9 +186,19 @@ function ListBody() {
       eyebrow={formatWeekEyebrow(scope.week.startsOn, true)}
       backHref="/week"
       backLabel={backLabel}
-      status={<StatusStrip state="locked" people={[]} secondary={LIST_LOCKED_SECONDARY} />}
+      status={<StatusStrip state="locked" people={[]} secondary={secondary} />}
+      footer={
+        reviewing && (editing || approving) ? (
+          <ListApproveBar listId={list.id} activeCount={active.length} canApprove={approving} />
+        ) : undefined
+      }
     >
       <div className="space-y-8">
+        {reviewing ? null : <OrderStatusCard list={list} />}
+        {reviewing ? null : (
+          <ListProblemSections missing={problems.missing} substituted={problems.substituted} />
+        )}
+        {editing ? <ListAddItemSheet stores={snapshot.stores} busy={false} onAdd={add} /> : null}
         {groups.map((group) => (
           <section key={group.store.id} data-slot="list-store-section">
             <h2
@@ -143,87 +210,31 @@ function ListBody() {
               {group.label}
             </h2>
             <ul className="divide-y divide-border">
-              {group.items.map((item) => {
-                const display = listItemDisplay(item);
-                return (
-                  <ShoppingListRow
-                    key={item.id}
-                    itemId={item.id}
-                    name={display.name}
-                    quantity={display.quantity}
-                    checked={item.checked}
-                    onToggle={toggleItem}
-                  />
-                );
-              })}
+              {group.items.map((item) => (
+                <ListRow
+                  key={item.id}
+                  item={item}
+                  onRemove={editing ? () => forget(item) : undefined}
+                />
+              ))}
             </ul>
           </section>
         ))}
+        <ListRemovedSection
+          items={gone}
+          memberships={snapshot.memberships}
+          canEdit={editing}
+          onRestore={(itemId) => {
+            void restoreItem(itemId);
+          }}
+        />
       </div>
-      {scope.week.shoppingPrompt === "open" || pendingClose ? (
-        <div data-slot="shopping-prompt-actions" className="mt-8 space-y-2">
-          <Button
-            type="button"
-            size="fat"
-            variant="primary"
-            className="w-full"
-            data-slot="done-shopping"
-            disabled={pendingClose !== null}
-            aria-busy={pendingClose === "done"}
-            onClick={() => {
-              setPendingClose("done");
-              void closeShoppingPrompt("done")
-                .catch(() => undefined)
-                .finally(() => setPendingClose(null));
-            }}
-          >
-            {pendingClose === "done" ? <Loader2 className="size-5 animate-spin" aria-hidden /> : null}
-            {pendingClose === "done" ? "Saving…" : DONE_SHOPPING_LABEL}
-          </Button>
-          <Button
-            type="button"
-            size="fat"
-            variant="ghost"
-            className="w-full"
-            data-slot="dismiss-shopping"
-            disabled={pendingClose !== null}
-            aria-busy={pendingClose === "dismissed"}
-            onClick={() => {
-              setPendingClose("dismissed");
-              void closeShoppingPrompt("dismissed")
-                .catch(() => undefined)
-                .finally(() => setPendingClose(null));
-            }}
-          >
-            {pendingClose === "dismissed" ? <Loader2 className="size-5 animate-spin" aria-hidden /> : null}
-            {DISMISS_SHOPPING_LABEL}
-          </Button>
-        </div>
-      ) : null}
+      <BallotToast
+        message={toast?.message}
+        duration={toast?.duration}
+        action={toast?.action}
+        onDismiss={() => setToast(null)}
+      />
     </AppShell>
-  );
-}
-
-function ShoppingListRow({
-  itemId,
-  name,
-  quantity,
-  checked,
-  onToggle,
-}: {
-  itemId: string;
-  name: string;
-  quantity: string;
-  checked: boolean;
-  onToggle: (itemId: string, checked: boolean) => Promise<void>;
-}) {
-  const optimistic = useOptimisticValue(checked, (next) => onToggle(itemId, next));
-  return (
-    <ListRow
-      name={name}
-      quantity={quantity}
-      checked={optimistic.value}
-      onCheckedChange={optimistic.commit}
-    />
   );
 }

@@ -43,6 +43,12 @@ function household(): Household {
     postalCode: null,
     botCheckMode: "adaptive",
     botCheckIntervalHours: null,
+    hebCheckoutMode: "review",
+    deliveryDays: null,
+    deliveryWindowStart: null,
+    deliveryWindowEnd: null,
+    orderMaxCents: null,
+    listApproverRole: "owner",
   };
 }
 

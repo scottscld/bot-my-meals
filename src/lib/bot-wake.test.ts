@@ -41,6 +41,8 @@ import {
   isHttpsWebhookUrl,
   postBotWake,
   shouldWakeNeedsWork,
+  debounceKey,
+  parseWakeEvent,
   wakeAllowed,
   type WakeEvent,
 } from "@/lib/bot-wake";
@@ -208,11 +210,15 @@ describe("bot wake helper", () => {
   });
 
   it("wakes check now always, week_locked only when locked, and needs_work only on a flip", () => {
-    expect(wakeAllowed("check_now", { weekLocked: false, needsWork: false })).toBe(true);
-    expect(wakeAllowed("week_locked", { weekLocked: true, needsWork: false })).toBe(true);
-    expect(wakeAllowed("week_locked", { weekLocked: false, needsWork: true })).toBe(false);
-    expect(wakeAllowed("needs_work", { weekLocked: false, needsWork: true })).toBe(true);
-    expect(wakeAllowed("needs_work", { weekLocked: true, needsWork: false })).toBe(false);
+    expect(wakeAllowed("check_now", { weekLocked: false, needsWork: false, listApproved: false })).toBe(true);
+    expect(wakeAllowed("week_locked", { weekLocked: true, needsWork: false, listApproved: false })).toBe(true);
+    expect(wakeAllowed("week_locked", { weekLocked: false, needsWork: true, listApproved: false })).toBe(false);
+    expect(wakeAllowed("needs_work", { weekLocked: false, needsWork: true, listApproved: false })).toBe(true);
+    expect(wakeAllowed("needs_work", { weekLocked: true, needsWork: false, listApproved: false })).toBe(false);
+    expect(parseWakeEvent("list_approved")).toBe("list_approved");
+    expect(wakeAllowed("list_approved", { weekLocked: false, needsWork: false, listApproved: true })).toBe(true);
+    expect(wakeAllowed("list_approved", { weekLocked: true, needsWork: true, listApproved: false })).toBe(false);
+    expect(debounceKey("meals.example.com", "list_approved")).toBe("meals.example.com:list_approved");
     expect(shouldWakeNeedsWork(null, true)).toBe(false);
     expect(shouldWakeNeedsWork(true, true)).toBe(false);
     expect(shouldWakeNeedsWork(false, false)).toBe(false);
@@ -482,6 +488,7 @@ describe("Wake your Bot settings and gated hints", () => {
 
     expect(provider).toContain('requestBotWake("week_locked")');
     expect(provider).toContain('requestBotWake("needs_work")');
+    expect(provider).toContain('requestBotWake("list_approved")');
     expect(provider).toContain("shouldWakeNeedsWork");
     expect(provider).toContain("wakeWeekOrPlanChange");
     expect(provider).toMatch(/saveWeekPeople:[\s\S]*wakeWeekOrPlanChange/);

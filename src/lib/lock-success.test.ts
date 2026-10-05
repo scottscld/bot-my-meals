@@ -18,7 +18,7 @@ import {
 
 describe("lock-success copy", () => {
   it("uses the shipped CTAs and never coaches collapse or a cart", () => {
-    expect(LOCK_SUCCESS_LIST_CTA).toBe("Open shopping list");
+    expect(LOCK_SUCCESS_LIST_CTA).toBe("Review shopping list");
     expect(LOCK_SUCCESS_RECIPES_CTA).toBe("See recipes");
     expect(lockSuccessRecipesCta("Lemon roast chicken")).toBe("See recipes · Lemon roast chicken");
     expect(lockSuccessRecipesCta()).toBe("See recipes");
@@ -28,7 +28,7 @@ describe("lock-success copy", () => {
     expect(blob).not.toContain("tap to expand");
     expect(blob).not.toContain("cart");
     expect(blob).not.toContain("$");
-    expect(LIST_LOCKED_SECONDARY).toContain("No prices");
+    expect(LIST_LOCKED_SECONDARY).toContain("Then approve");
   });
 
   it("replaces Approve/Skip lock-first empties with week-lock copy", () => {
